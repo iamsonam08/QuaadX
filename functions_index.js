@@ -1,23 +1,23 @@
 
 /**
- * FIREBASE CLOUD FUNCTIONS - BACKEND AI LOGIC
- * Deploy this in your Firebase Functions folder.
- * It handles the 'processing_queue' and distributes data into categories.
+ * FIREBASE CLOUD FUNCTIONS - BACKEND AI LOGIC (ESM VERSION)
+ * This file is intended for deployment to Firebase Functions (v2).
  */
 
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { GoogleGenAI } = require("@google/genai");
-const admin = require("firebase-admin");
-const fetch = require("node-fetch"); // Ensure node-fetch is in package.json
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { getFirestore, FieldValue } from "firebase-admin/firestore";
+import { GoogleGenAI } from "@google/genai";
+import admin from "firebase-admin";
+import fetch from "node-fetch";
 
-admin.initializeApp();
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
 const db = getFirestore();
-
-// Gemini Initialization (Backend Version)
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-exports.processAIQueue = onDocumentCreated("processing_queue/{docId}", async (event) => {
+export const processAIQueue = onDocumentCreated("processing_queue/{docId}", async (event) => {
   const snapshot = event.data;
   if (!snapshot) return;
 
@@ -31,8 +31,6 @@ exports.processAIQueue = onDocumentCreated("processing_queue/{docId}", async (ev
       1. Extract structured information with high precision.
       2. Categorize it into EXACTLY ONE: 'attendance', 'timetable', 'scholarships', 'events', 'exams', 'internships'.
       3. Identify target Branch (Comp, IT, Civil, Mech, Elect, AIDS, E&TC) and Year (1st Year, 2nd Year, 3rd Year, 4th Year).
-      4. For Timetable, extract individual slots with time, subject, and room.
-      5. For Attendance, extract subject, total classes, and attended classes.
       
       Output ONLY a JSON object with this schema:
       {
@@ -57,7 +55,7 @@ exports.processAIQueue = onDocumentCreated("processing_queue/{docId}", async (ev
     parts.push({ text: systemPrompt });
 
     if (type === 'file' && fileUrl) {
-      console.log(`Downloading file: ${fileUrl}`);
+      console.log(`Downloading and processing file: ${fileUrl}`);
       const response = await fetch(fileUrl);
       const buffer = await response.buffer();
       const base64Data = buffer.toString('base64');
@@ -72,16 +70,16 @@ exports.processAIQueue = onDocumentCreated("processing_queue/{docId}", async (ev
       parts.push({ text: `INPUT TEXT:\n${content}` });
     }
 
-    const response = await ai.models.generateContent({
+    const aiResponse = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: { parts },
       config: { responseMimeType: "application/json" }
     });
 
-    const aiResult = JSON.parse(response.text);
+    const aiResult = JSON.parse(aiResponse.text);
     const category = aiResult.category.toLowerCase();
     
-    // Normalize Category Name if AI used plural/singular variations
+    // Normalize Category Name
     const validCategories = ['attendance', 'timetable', 'scholarships', 'events', 'exams', 'internships'];
     const finalCategory = validCategories.includes(category) ? category : 'events';
 
@@ -95,7 +93,7 @@ exports.processAIQueue = onDocumentCreated("processing_queue/{docId}", async (ev
     // Save to the specific Firestore collection for real-time sync
     await db.collection(finalCategory).add(finalData);
     
-    // Mark as processed
+    // Mark as processed in the queue
     await snapshot.ref.update({ status: 'completed', category: finalCategory });
     
     console.log(`Successfully categorized as: ${finalCategory}`);

@@ -128,12 +128,12 @@ const AdminPanel: React.FC<{ appData: AppData, setAppData: any, onExit: () => vo
           </div>
 
           <div className="space-y-4">
-            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Method 2: Upload File (PDF/Image)</label>
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Method 2: Upload Document</label>
             <input 
               type="file" 
               ref={fileInputRef}
               onChange={handleFileUpload}
-              accept=".pdf,image/*"
+              accept="*/*"
               className="hidden" 
             />
             <button 
@@ -142,8 +142,8 @@ const AdminPanel: React.FC<{ appData: AppData, setAppData: any, onExit: () => vo
               className="w-full py-8 border-2 border-dashed border-slate-800 rounded-3xl flex flex-col items-center justify-center gap-2 hover:bg-slate-800/50 transition-all disabled:opacity-50"
             >
               <i className="fa-solid fa-cloud-arrow-up text-2xl text-blue-500"></i>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Select Campus Document</span>
-              <span className="text-[8px] font-bold text-slate-600">Supports PDF, JPG, PNG</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Select Any File</span>
+              <span className="text-[8px] font-bold text-slate-600">AI will extract and sync automatically</span>
             </button>
           </div>
         </div>
