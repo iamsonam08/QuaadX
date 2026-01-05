@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { AppData, ModuleType } from './types';
 import { INITIAL_DATA } from './constants';
@@ -23,6 +24,7 @@ const App: React.FC = () => {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const logoTaps = useRef<{ count: number; lastTime: number }>({ count: 0, lastTime: 0 });
 
@@ -30,15 +32,17 @@ const App: React.FC = () => {
   useEffect(() => {
     const syncData = async (silent = false) => {
       if (!silent) setIsLoading(true);
+      setIsSyncing(true);
       const data = await PersistenceService.loadData();
       if (data) setAppData(data);
       if (!silent) setIsLoading(false);
+      setTimeout(() => setIsSyncing(false), 1000);
     };
 
     syncData();
 
-    // Background Polling: Refresh every 15 seconds to catch global admin updates
-    const pollInterval = setInterval(() => syncData(true), 15000);
+    // Background Polling: Refresh every 20 seconds to catch global admin updates
+    const pollInterval = setInterval(() => syncData(true), 20000);
 
     const handleCloudSync = (event: any) => {
       if (event.detail) setAppData(event.detail);
@@ -81,7 +85,7 @@ const App: React.FC = () => {
       setShowAdminLogin(false);
       setPassword('');
     } else {
-      alert('Incorrect Password');
+      alert('Access Denied');
     }
   };
 
@@ -92,9 +96,20 @@ const App: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
-        <Logo className="w-24 h-24 mb-4 animate-pulse" />
-        <p className="text-blue-500 font-black tracking-widest text-[10px] uppercase">Connecting to Campus Cloud Hub...</p>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
+        <Logo className="w-32 h-32 mb-8 animate-pulse" />
+        <div className="space-y-2">
+          <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase animate-pulse">Initializing QuadX Core</p>
+          <div className="w-48 h-1 bg-slate-900 rounded-full overflow-hidden mx-auto">
+            <div className="h-full bg-blue-500 animate-[loading_2s_infinite]"></div>
+          </div>
+        </div>
+        <style>{`
+          @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+          }
+        `}</style>
       </div>
     );
   }
@@ -123,27 +138,33 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden transition-colors duration-500 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'}`}>
-      {currentModule === 'DASHBOARD' && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute -top-24 -left-24 w-64 h-64 bg-blue-400/10 rounded-full blur-3xl animate-blob"></div>
-          <div className="absolute top-1/2 -right-24 w-80 h-80 bg-purple-400/10 rounded-full blur-3xl animate-blob animation-delay-2000"></div>
-        </div>
-      )}
+    <div className={`min-h-screen flex flex-col max-w-md mx-auto relative shadow-[0_0_100px_rgba(0,0,0,0.3)] overflow-hidden transition-all duration-1000 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'}`}>
+      
+      {/* Immersive Animated Background */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className={`absolute -top-32 -left-32 w-80 h-80 rounded-full blur-[100px] animate-blob transition-colors duration-1000 ${isDarkMode ? 'bg-blue-600/10' : 'bg-blue-400/10'}`}></div>
+        <div className={`absolute top-1/2 -right-32 w-96 h-96 rounded-full blur-[120px] animate-blob animation-delay-2000 transition-colors duration-1000 ${isDarkMode ? 'bg-purple-600/10' : 'bg-purple-400/10'}`}></div>
+        <div className={`absolute -bottom-32 left-1/4 w-64 h-64 rounded-full blur-[80px] animate-blob animation-delay-4000 transition-colors duration-1000 ${isDarkMode ? 'bg-emerald-600/10' : 'bg-emerald-400/10'}`}></div>
+      </div>
 
-      <header className="p-6 pb-2 relative z-10">
+      <header className="p-6 pb-2 relative z-20">
         <div className="flex justify-between items-center mb-6">
-          <div onClick={handleLogoClick} className="cursor-pointer select-none group flex items-center gap-2">
-            <Logo className="w-16 h-16 transition-transform duration-500 group-hover:scale-110 active:scale-95" />
+          <div onClick={handleLogoClick} className="cursor-pointer select-none group flex items-center gap-3">
+            <Logo className="w-14 h-14 transition-all duration-700 group-hover:scale-110 active:scale-90" />
             <div className="flex flex-col">
-              <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 to-purple-600 bg-clip-text text-transparent tracking-tighter leading-none">QUADX</h1>
-              <span className="text-[8px] font-bold text-slate-400 tracking-[0.3em] uppercase opacity-60">Global Cloud Sync</span>
+              <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-600 bg-clip-text text-transparent tracking-tighter leading-none">QUADX</h1>
+              <div className="flex items-center gap-1.5 mt-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-ping' : 'bg-emerald-500'}`}></div>
+                <span className="text-[8px] font-bold text-slate-400 tracking-[0.2em] uppercase opacity-70">
+                  {isSyncing ? 'Syncing Base...' : 'Global Cloud Active'}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center text-slate-400 hover:text-blue-600 transition-all active:scale-90"
+              className="w-11 h-11 rounded-2xl bg-white dark:bg-slate-900/50 backdrop-blur-md shadow-[0_4px_15px_rgba(0,0,0,0.05)] flex items-center justify-center text-slate-400 hover:text-blue-600 border border-white dark:border-slate-800 transition-all active:scale-90"
             >
               <i className={`fa-solid ${isDarkMode ? 'fa-sun text-amber-400' : 'fa-moon text-indigo-400'} text-lg`}></i>
             </button>
@@ -152,24 +173,24 @@ const App: React.FC = () => {
 
         {currentModule === 'DASHBOARD' && (
           <div className="mb-6 animate-fadeIn px-2">
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">QuadX Campus ⚡</h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium italic">Synced with College Base.</p>
+            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight leading-tight">Campus<br/>Intelligence ⚡</h2>
+            <p className="text-slate-500 dark:text-slate-400 font-medium italic text-sm mt-1">Personalized portal for the digital student.</p>
           </div>
         )}
       </header>
 
-      <main className="flex-1 px-4 pb-10 relative z-10 overflow-y-auto no-scrollbar">
+      <main className="flex-1 px-4 pb-10 relative z-20 overflow-y-auto no-scrollbar">
         {currentModule === 'DASHBOARD' ? (
-          <div className="grid grid-cols-2 gap-5 animate-slideUp">
-            <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-600" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-10" desc="Talk to the database" />
-            <FeatureCard title="Attendance" icon="fa-chart-pie" gradient="from-emerald-400 to-teal-600" onClick={() => setCurrentModule('ATTENDANCE')} desc="Live progress" />
-            <FeatureCard title="Timetable" icon="fa-calendar-week" gradient="from-blue-400 to-indigo-600" onClick={() => setCurrentModule('TIMETABLE')} desc="Class schedules" />
-            <FeatureCard title="Scholarship" icon="fa-graduation-cap" gradient="from-amber-400 to-orange-500" onClick={() => setCurrentModule('SCHOLARSHIP')} desc="Financial aid" />
-            <FeatureCard title="Events" icon="fa-masks-theater" gradient="from-pink-500 to-rose-500" onClick={() => setCurrentModule('EVENT_INFO')} desc="What's happening" />
-            <FeatureCard title="Exam Info" icon="fa-file-signature" gradient="from-red-500 to-orange-600" onClick={() => setCurrentModule('EXAM_INFO')} desc="Finals prep" />
-            <FeatureCard title="Complaints" icon="fa-box-archive" gradient="from-slate-600 to-slate-800" onClick={() => setCurrentModule('COMPLAINT_BOX')} desc="Report issues" />
-            <FeatureCard title="Internship" icon="fa-briefcase" gradient="from-cyan-400 to-blue-500" onClick={() => setCurrentModule('INTERNSHIP')} desc="Career goals" />
-            <FeatureCard title="Campus Map" icon="fa-map-location-dot" gradient="from-lime-400 to-green-600" onClick={() => setCurrentModule('CAMPUS_MAP')} desc="Find your way" />
+          <div className="grid grid-cols-2 gap-4 animate-slideUp">
+            <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-700" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-12" desc="Smart Knowledge Interface" />
+            <FeatureCard title="Attendance" icon="fa-chart-pie" gradient="from-emerald-400 to-teal-600" onClick={() => setCurrentModule('ATTENDANCE')} desc="Live Progress" />
+            <FeatureCard title="Timetable" icon="fa-calendar-week" gradient="from-blue-400 to-indigo-600" onClick={() => setCurrentModule('TIMETABLE')} desc="Class Schedules" />
+            <FeatureCard title="Scholarship" icon="fa-graduation-cap" gradient="from-amber-400 to-orange-500" onClick={() => setCurrentModule('SCHOLARSHIP')} desc="Financial Aid" />
+            <FeatureCard title="Events" icon="fa-masks-theater" gradient="from-pink-500 to-rose-500" onClick={() => setCurrentModule('EVENT_INFO')} desc="Campus Life" />
+            <FeatureCard title="Exam Info" icon="fa-file-signature" gradient="from-red-500 to-orange-600" onClick={() => setCurrentModule('EXAM_INFO')} desc="Academic Hub" />
+            <FeatureCard title="Complaints" icon="fa-box-archive" gradient="from-slate-600 to-slate-800" onClick={() => setCurrentModule('COMPLAINT_BOX')} desc="Anonymous Feedback" />
+            <FeatureCard title="Internship" icon="fa-briefcase" gradient="from-cyan-400 to-blue-500" onClick={() => setCurrentModule('INTERNSHIP')} desc="Career Pathway" />
+            <FeatureCard title="Campus Map" icon="fa-map-location-dot" gradient="from-lime-400 to-green-600" onClick={() => setCurrentModule('CAMPUS_MAP')} desc="Navigator Pro" />
           </div>
         ) : (
           <div className="animate-fadeIn h-full">
@@ -179,20 +200,41 @@ const App: React.FC = () => {
       </main>
 
       {showAdminLogin && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[100] p-6">
           <div className="bg-white dark:bg-slate-900 rounded-[3rem] w-full p-10 shadow-2xl animate-scaleIn border border-slate-100 dark:border-slate-800">
-            <Logo className="w-24 h-24 mb-6 mx-auto" />
-            <h3 className="text-2xl font-black mb-2 text-center text-slate-800 dark:text-white uppercase tracking-tighter">Admin Access</h3>
+            <Logo className="w-20 h-20 mb-6 mx-auto" />
+            <h3 className="text-2xl font-black mb-1 text-center text-slate-800 dark:text-white uppercase tracking-tighter">Admin Access</h3>
+            <p className="text-slate-400 text-center text-[10px] font-black uppercase tracking-widest mb-8">Authorised Personnel Only</p>
             <form onSubmit={handleAdminLogin}>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl p-5 mb-6 text-center text-2xl text-slate-800 dark:text-white" autoFocus />
+              <input 
+                type="password" 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="••••••••" 
+                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-3xl p-5 mb-6 text-center text-2xl text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
+                autoFocus 
+              />
               <div className="flex gap-4">
-                <button type="button" onClick={() => setShowAdminLogin(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold">Cancel</button>
-                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold">Verify</button>
+                <button type="button" onClick={() => setShowAdminLogin(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold text-sm">Cancel</button>
+                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20">Verify</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes blob {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -50px) scale(1.1); }
+          66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+        .animate-blob {
+          animation: blob 7s infinite alternate;
+        }
+        .animation-delay-2000 { animation-delay: 2s; }
+        .animation-delay-4000 { animation-delay: 4s; }
+      `}</style>
     </div>
   );
 };
