@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppData, ModuleType } from './types';
+import { AppData, ModuleType, Announcement } from './types';
 import { INITIAL_DATA } from './constants';
 import { PersistenceService } from './services/persistenceService';
+import { db } from './firebase';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import FeatureCard from './components/FeatureCard';
 import VPai from './components/Modules/VPai';
 import Attendance from './components/Modules/Attendance';
@@ -19,6 +21,7 @@ import Logo from './components/Logo';
 const App: React.FC = () => {
   const [currentModule, setCurrentModule] = useState<ModuleType>('DASHBOARD');
   const [appData, setAppData] = useState<AppData>(INITIAL_DATA);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
@@ -53,6 +56,29 @@ const App: React.FC = () => {
       clearInterval(pollInterval);
       window.removeEventListener('quadx_cloud_sync', handleCloudSync);
     };
+  }, []);
+
+  // Firestore Real-time Announcements Listener
+  useEffect(() => {
+    // Only execute on browser client side
+    if (typeof window === 'undefined') return;
+
+    try {
+      const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const announcementData: Announcement[] = [];
+        querySnapshot.forEach((doc) => {
+          announcementData.push({ id: doc.id, ...doc.data() } as Announcement);
+        });
+        setAnnouncements(announcementData);
+      }, (error) => {
+        console.warn("Firestore Listener Error:", error);
+      });
+
+      return () => unsubscribe();
+    } catch (error) {
+      console.error("Firestore setup error:", error);
+    }
   }, []);
 
   useEffect(() => {
@@ -181,16 +207,43 @@ const App: React.FC = () => {
 
       <main className="flex-1 px-4 pb-10 relative z-20 overflow-y-auto no-scrollbar">
         {currentModule === 'DASHBOARD' ? (
-          <div className="grid grid-cols-2 gap-4 animate-slideUp">
-            <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-700" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-12" desc="Smart Knowledge Interface" />
-            <FeatureCard title="Attendance" icon="fa-chart-pie" gradient="from-emerald-400 to-teal-600" onClick={() => setCurrentModule('ATTENDANCE')} desc="Live Progress" />
-            <FeatureCard title="Timetable" icon="fa-calendar-week" gradient="from-blue-400 to-indigo-600" onClick={() => setCurrentModule('TIMETABLE')} desc="Class Schedules" />
-            <FeatureCard title="Scholarship" icon="fa-graduation-cap" gradient="from-amber-400 to-orange-500" onClick={() => setCurrentModule('SCHOLARSHIP')} desc="Financial Aid" />
-            <FeatureCard title="Events" icon="fa-masks-theater" gradient="from-pink-500 to-rose-500" onClick={() => setCurrentModule('EVENT_INFO')} desc="Campus Life" />
-            <FeatureCard title="Exam Info" icon="fa-file-signature" gradient="from-red-500 to-orange-600" onClick={() => setCurrentModule('EXAM_INFO')} desc="Academic Hub" />
-            <FeatureCard title="Complaints" icon="fa-box-archive" gradient="from-slate-600 to-slate-800" onClick={() => setCurrentModule('COMPLAINT_BOX')} desc="Anonymous Feedback" />
-            <FeatureCard title="Internship" icon="fa-briefcase" gradient="from-cyan-400 to-blue-500" onClick={() => setCurrentModule('INTERNSHIP')} desc="Career Pathway" />
-            <FeatureCard title="Campus Map" icon="fa-map-location-dot" gradient="from-lime-400 to-green-600" onClick={() => setCurrentModule('CAMPUS_MAP')} desc="Navigator Pro" />
+          <div className="flex flex-col gap-6">
+            
+            {/* Real-time Announcements Display */}
+            {announcements.length > 0 && (
+              <div className="animate-slideUp px-2">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
+                    Campus Broadcast
+                  </h3>
+                  <span className="text-[8px] font-bold text-slate-400/50 uppercase">{announcements.length} Active</span>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {announcements.slice(0, 2).map((ann, idx) => (
+                    <div key={ann.id} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] shadow-sm relative overflow-hidden group transition-all hover:border-blue-500/30">
+                      <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i className="fa-solid fa-bullhorn text-2xl rotate-12"></i>
+                      </div>
+                      <h4 className="font-black text-xs text-slate-800 dark:text-slate-100 uppercase mb-1 leading-tight">{ann.title}</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{ann.message}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4 animate-slideUp">
+              <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-700" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-12" desc="Smart Knowledge Interface" />
+              <FeatureCard title="Attendance" icon="fa-chart-pie" gradient="from-emerald-400 to-teal-600" onClick={() => setCurrentModule('ATTENDANCE')} desc="Live Progress" />
+              <FeatureCard title="Timetable" icon="fa-calendar-week" gradient="from-blue-400 to-indigo-600" onClick={() => setCurrentModule('TIMETABLE')} desc="Class Schedules" />
+              <FeatureCard title="Scholarship" icon="fa-graduation-cap" gradient="from-amber-400 to-orange-500" onClick={() => setCurrentModule('SCHOLARSHIP')} desc="Financial Aid" />
+              <FeatureCard title="Events" icon="fa-masks-theater" gradient="from-pink-500 to-rose-500" onClick={() => setCurrentModule('EVENT_INFO')} desc="Campus Life" />
+              <FeatureCard title="Exam Info" icon="fa-file-signature" gradient="from-red-500 to-orange-600" onClick={() => setCurrentModule('EXAM_INFO')} desc="Academic Hub" />
+              <FeatureCard title="Complaints" icon="fa-box-archive" gradient="from-slate-600 to-slate-800" onClick={() => setCurrentModule('COMPLAINT_BOX')} desc="Anonymous Feedback" />
+              <FeatureCard title="Internship" icon="fa-briefcase" gradient="from-cyan-400 to-blue-500" onClick={() => setCurrentModule('INTERNSHIP')} desc="Career Pathway" />
+              <FeatureCard title="Campus Map" icon="fa-map-location-dot" gradient="from-lime-400 to-green-600" onClick={() => setCurrentModule('CAMPUS_MAP')} desc="Navigator Pro" />
+            </div>
           </div>
         ) : (
           <div className="animate-fadeIn h-full">

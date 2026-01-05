@@ -91,6 +91,13 @@ export interface UploadLog {
   status: 'SUCCESS' | 'PARTIAL' | 'FAILED';
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  timestamp?: any;
+}
+
 export interface AppData {
   attendance: AttendanceRecord[];
   timetable: TimetableEntry[];
