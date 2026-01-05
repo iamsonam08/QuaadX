@@ -1,3 +1,14 @@
-// This file is deprecated in favor of firebase.ts to resolve TypeScript build conflicts.
-// It is kept empty to avoid "implicitly has any type" errors if the compiler still references it.
-export {};
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCEPHzlhJixoK0M4w70d3josThrvtTCJyU",
+  authDomain: "quadx-6ad7e.firebaseapp.com",
+  projectId: "quadx-6ad7e",
+  storageBucket: "quadx-6ad7e.firebasestorage.app",
+  messagingSenderId: "425711577256",
+  appId: "1:425711577256:web:7d8fd0c6d49758eefe3a9d"
+};
+
+export const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app);
