@@ -1,0 +1,8 @@
+{
+  "name": " QuadX-New",
+  "description": "A vibrant, AI-powered college companion app featuring course management, campus tools, and a secret admin portal.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
