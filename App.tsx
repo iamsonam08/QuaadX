@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppData, ModuleType, Announcement } from './types';
+import { AppData, ModuleType, Announcement, AttendanceRecord, TimetableEntry, ExamSchedule, ScholarshipItem, CampusEvent, InternshipItem, Complaint } from './types';
 import { INITIAL_DATA } from './constants';
-import { PersistenceService } from './services/persistenceService';
 import { db } from './firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import FeatureCard from './components/FeatureCard';
@@ -27,77 +26,58 @@ const App: React.FC = () => {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [password, setPassword] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
 
   const logoTaps = useRef<{ count: number; lastTime: number }>({ count: 0, lastTime: 0 });
 
-  // Initial Data Load & Global Sync Polling
+  // Global Real-time Firestore Listeners
   useEffect(() => {
-    const syncData = async (silent = false) => {
-      if (!silent) setIsLoading(true);
-      setIsSyncing(true);
-      const data = await PersistenceService.loadData();
-      if (data) setAppData(data);
-      if (!silent) setIsLoading(false);
-      setTimeout(() => setIsSyncing(false), 1000);
-    };
-
-    syncData();
-
-    // Background Polling: Refresh every 20 seconds to catch global admin updates
-    const pollInterval = setInterval(() => syncData(true), 20000);
-
-    const handleCloudSync = (event: any) => {
-      if (event.detail) setAppData(event.detail);
-    };
-    window.addEventListener('quadx_cloud_sync', handleCloudSync);
-
-    return () => {
-      clearInterval(pollInterval);
-      window.removeEventListener('quadx_cloud_sync', handleCloudSync);
-    };
-  }, []);
-
-  // Firestore Real-time Announcements Listener
-  useEffect(() => {
-    // Only execute on browser client side
     if (typeof window === 'undefined') return;
 
-    try {
-      const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const announcementData: Announcement[] = [];
-        querySnapshot.forEach((doc) => {
-          announcementData.push({ id: doc.id, ...doc.data() } as Announcement);
-        });
-        setAnnouncements(announcementData);
-      }, (error) => {
-        console.warn("Firestore Listener Error:", error);
-      });
+    // Helper to setup a listener
+    const setupListener = (collName: string, updateKey: keyof AppData) => {
+      const q = query(collection(db, collName), orderBy("timestamp", "desc"));
+      return onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setAppData(prev => ({ ...prev, [updateKey]: items }));
+        if (isLoading) setIsLoading(false);
+      }, (err) => console.error(`Error in ${collName} listener:`, err));
+    };
 
-      return () => unsubscribe();
-    } catch (error) {
-      console.error("Firestore setup error:", error);
-    }
+    // Initialize all listeners
+    const unsubscribes = [
+      setupListener('attendance', 'attendance'),
+      setupListener('timetable', 'timetable'),
+      setupListener('exams', 'exams'),
+      setupListener('scholarships', 'scholarships'),
+      setupListener('internships', 'internships'),
+      setupListener('events', 'events'),
+      setupListener('complaints', 'complaints'),
+      
+      // Announcements listener
+      onSnapshot(query(collection(db, "announcements"), orderBy("timestamp", "desc")), (snapshot) => {
+        setAnnouncements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Announcement)));
+      })
+    ];
+
+    // Minimal delay to show loader for UX
+    const timer = setTimeout(() => setIsLoading(false), 1500);
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub());
+      clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
 
   const handleLogoClick = () => {
     const now = Date.now();
-    if (now - logoTaps.current.lastTime < 1000) {
-      logoTaps.current.count += 1;
-    } else {
-      logoTaps.current.count = 1;
-    }
+    if (now - logoTaps.current.lastTime < 1000) logoTaps.current.count += 1;
+    else logoTaps.current.count = 1;
     logoTaps.current.lastTime = now;
-
     if (logoTaps.current.count === 3) {
       setShowAdminLogin(true);
       logoTaps.current.count = 0;
@@ -110,38 +90,20 @@ const App: React.FC = () => {
       setIsAdminMode(true);
       setShowAdminLogin(false);
       setPassword('');
-    } else {
-      alert('Access Denied');
-    }
-  };
-
-  const updateAppDataAndSync = async (newData: AppData) => {
-    setAppData(newData);
-    await PersistenceService.saveData(newData);
+    } else alert('Access Denied');
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center">
         <Logo className="w-32 h-32 mb-8 animate-pulse" />
-        <div className="space-y-2">
-          <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase animate-pulse">Initializing QuadX Core</p>
-          <div className="w-48 h-1 bg-slate-900 rounded-full overflow-hidden mx-auto">
-            <div className="h-full bg-blue-500 animate-[loading_2s_infinite]"></div>
-          </div>
-        </div>
-        <style>{`
-          @keyframes loading {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(100%); }
-          }
-        `}</style>
+        <p className="text-blue-500 font-black tracking-[0.4em] text-[10px] uppercase">Syncing Campus Data...</p>
       </div>
     );
   }
 
   if (isAdminMode) {
-    return <AdminPanel appData={appData} setAppData={updateAppDataAndSync} onExit={() => setIsAdminMode(false)} />;
+    return <AdminPanel appData={appData} setAppData={setAppData} onExit={() => setIsAdminMode(false)} />;
   }
 
   const renderModule = () => {
@@ -152,11 +114,7 @@ const App: React.FC = () => {
       case 'EXAM_INFO': return <ExamInfo data={appData} onBack={() => setCurrentModule('DASHBOARD')} />;
       case 'SCHOLARSHIP': return <Scholarship data={appData} onBack={() => setCurrentModule('DASHBOARD')} />;
       case 'EVENT_INFO': return <EventInfo data={appData} onBack={() => setCurrentModule('DASHBOARD')} />;
-      case 'COMPLAINT_BOX': return <ComplaintBox setAppData={async (fn) => {
-        const newData = typeof fn === 'function' ? fn(appData) : fn;
-        setAppData(newData);
-        await PersistenceService.saveData(newData);
-      }} onBack={() => setCurrentModule('DASHBOARD')} />;
+      case 'COMPLAINT_BOX': return <ComplaintBox setAppData={async (data) => {}} onBack={() => setCurrentModule('DASHBOARD')} />;
       case 'INTERNSHIP': return <Internship data={appData} onBack={() => setCurrentModule('DASHBOARD')} />;
       case 'CAMPUS_MAP': return <CampusMap data={appData} onBack={() => setCurrentModule('DASHBOARD')} />;
       default: return null;
@@ -164,13 +122,10 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col max-w-md mx-auto relative shadow-[0_0_100px_rgba(0,0,0,0.3)] overflow-hidden transition-all duration-1000 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'}`}>
-      
-      {/* Immersive Animated Background */}
+    <div className={`min-h-screen flex flex-col max-w-md mx-auto relative shadow-2xl overflow-hidden transition-all duration-1000 ${isDarkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-800'}`}>
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className={`absolute -top-32 -left-32 w-80 h-80 rounded-full blur-[100px] animate-blob transition-colors duration-1000 ${isDarkMode ? 'bg-blue-600/10' : 'bg-blue-400/10'}`}></div>
-        <div className={`absolute top-1/2 -right-32 w-96 h-96 rounded-full blur-[120px] animate-blob animation-delay-2000 transition-colors duration-1000 ${isDarkMode ? 'bg-purple-600/10' : 'bg-purple-400/10'}`}></div>
-        <div className={`absolute -bottom-32 left-1/4 w-64 h-64 rounded-full blur-[80px] animate-blob animation-delay-4000 transition-colors duration-1000 ${isDarkMode ? 'bg-emerald-600/10' : 'bg-emerald-400/10'}`}></div>
+        <div className={`absolute -top-32 -left-32 w-80 h-80 rounded-full blur-[100px] ${isDarkMode ? 'bg-blue-600/10' : 'bg-blue-400/10'}`}></div>
+        <div className={`absolute -bottom-32 right-1/4 w-64 h-64 rounded-full blur-[80px] ${isDarkMode ? 'bg-emerald-600/10' : 'bg-emerald-400/10'}`}></div>
       </div>
 
       <header className="p-6 pb-2 relative z-20">
@@ -179,59 +134,34 @@ const App: React.FC = () => {
             <Logo className="w-14 h-14 transition-all duration-700 group-hover:scale-110 active:scale-90" />
             <div className="flex flex-col">
               <h1 className="text-2xl font-black bg-gradient-to-r from-blue-400 via-indigo-500 to-purple-600 bg-clip-text text-transparent tracking-tighter leading-none">QUADX</h1>
-              <div className="flex items-center gap-1.5 mt-1">
-                <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-blue-500 animate-ping' : 'bg-emerald-500'}`}></div>
-                <span className="text-[8px] font-bold text-slate-400 tracking-[0.2em] uppercase opacity-70">
-                  {isSyncing ? 'Syncing Base...' : 'Global Cloud Active'}
-                </span>
-              </div>
+              <span className="text-[8px] font-bold text-slate-400 tracking-[0.2em] uppercase opacity-70 mt-1">Global Base Active</span>
             </div>
           </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className="w-11 h-11 rounded-2xl bg-white dark:bg-slate-900/50 backdrop-blur-md shadow-[0_4px_15px_rgba(0,0,0,0.05)] flex items-center justify-center text-slate-400 hover:text-blue-600 border border-white dark:border-slate-800 transition-all active:scale-90"
-            >
-              <i className={`fa-solid ${isDarkMode ? 'fa-sun text-amber-400' : 'fa-moon text-indigo-400'} text-lg`}></i>
-            </button>
-          </div>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-11 h-11 rounded-2xl bg-white dark:bg-slate-900 shadow-sm flex items-center justify-center text-slate-400 transition-all active:scale-90">
+            <i className={`fa-solid ${isDarkMode ? 'fa-sun text-amber-400' : 'fa-moon text-indigo-400'} text-lg`}></i>
+          </button>
         </div>
-
-        {currentModule === 'DASHBOARD' && (
-          <div className="mb-6 animate-fadeIn px-2">
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight leading-tight">Campus<br/>Intelligence ⚡</h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium italic text-sm mt-1">Personalized portal for the digital student.</p>
-          </div>
-        )}
       </header>
 
       <main className="flex-1 px-4 pb-10 relative z-20 overflow-y-auto no-scrollbar">
         {currentModule === 'DASHBOARD' ? (
           <div className="flex flex-col gap-6">
-            
-            {/* Real-time Announcements Display */}
-            {announcements.length > 0 && (
-              <div className="animate-slideUp px-2">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
-                    Campus Broadcast
-                  </h3>
-                  <span className="text-[8px] font-bold text-slate-400/50 uppercase">{announcements.length} Active</span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {announcements.slice(0, 2).map((ann, idx) => (
-                    <div key={ann.id} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] shadow-sm relative overflow-hidden group transition-all hover:border-blue-500/30">
-                      <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <i className="fa-solid fa-bullhorn text-2xl rotate-12"></i>
-                      </div>
-                      <h4 className="font-black text-xs text-slate-800 dark:text-slate-100 uppercase mb-1 leading-tight">{ann.title}</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{ann.message}</p>
-                    </div>
-                  ))}
-                </div>
+            <div className="animate-slideUp px-2 pt-2">
+              <h3 className="text-sm font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter mb-4 flex items-center gap-2">
+                <span className="relative flex h-3 w-3"><span className="animate-ping absolute h-full w-full rounded-full bg-rose-400 opacity-75"></span><span className="relative rounded-full h-3 w-3 bg-rose-500"></span></span>
+                📢 Announcements (Live)
+              </h3>
+              <div className="flex flex-col gap-4">
+                {announcements.length > 0 ? announcements.map((ann) => (
+                  <div key={ann.id} className="bg-white dark:bg-slate-900 border-2 border-indigo-500/10 p-6 rounded-[2.5rem] shadow-sm">
+                    <h4 className="font-black text-sm text-slate-800 dark:text-slate-100 uppercase mb-2">{ann.title}</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{ann.message}</p>
+                  </div>
+                )) : <div className="p-10 text-center opacity-30 text-[10px] font-bold uppercase">Scanning Network...</div>}
               </div>
-            )}
+            </div>
+
+            <div className="mb-2 px-2"><h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight leading-tight">Campus Intelligence⚡</h2><p className="text-slate-500 italic text-sm mt-1">Digital portal for modern students.</p></div>
 
             <div className="grid grid-cols-2 gap-4 animate-slideUp">
               <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-700" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-12" desc="Smart Knowledge Interface" />
@@ -245,49 +175,23 @@ const App: React.FC = () => {
               <FeatureCard title="Campus Map" icon="fa-map-location-dot" gradient="from-lime-400 to-green-600" onClick={() => setCurrentModule('CAMPUS_MAP')} desc="Navigator Pro" />
             </div>
           </div>
-        ) : (
-          <div className="animate-fadeIn h-full">
-            {renderModule()}
-          </div>
-        )}
+        ) : <div className="animate-fadeIn h-full">{renderModule()}</div>}
       </main>
 
       {showAdminLogin && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-center justify-center z-[100] p-6">
-          <div className="bg-white dark:bg-slate-900 rounded-[3rem] w-full p-10 shadow-2xl animate-scaleIn border border-slate-100 dark:border-slate-800">
-            <Logo className="w-20 h-20 mb-6 mx-auto" />
-            <h3 className="text-2xl font-black mb-1 text-center text-slate-800 dark:text-white uppercase tracking-tighter">Admin Access</h3>
-            <p className="text-slate-400 text-center text-[10px] font-black uppercase tracking-widest mb-8">Authorised Personnel Only</p>
-            <form onSubmit={handleAdminLogin}>
-              <input 
-                type="password" 
-                value={password} 
-                onChange={(e) => setPassword(e.target.value)} 
-                placeholder="••••••••" 
-                className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-3xl p-5 mb-6 text-center text-2xl text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 transition-all" 
-                autoFocus 
-              />
+          <div className="bg-white dark:bg-slate-900 rounded-[3rem] w-full p-10 shadow-2xl border border-slate-100 dark:border-slate-800">
+            <h3 className="text-2xl font-black mb-1 text-center text-slate-800 dark:text-white uppercase">Admin Access</h3>
+            <form onSubmit={handleAdminLogin} className="mt-8">
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-3xl p-5 mb-6 text-center text-2xl outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
               <div className="flex gap-4">
-                <button type="button" onClick={() => setShowAdminLogin(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-2xl font-bold text-sm">Cancel</button>
-                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-xl shadow-blue-500/20">Verify</button>
+                <button type="button" onClick={() => setShowAdminLogin(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-bold text-sm">Cancel</button>
+                <button type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-bold text-sm">Verify</button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      <style>{`
-        @keyframes blob {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(30px, -50px) scale(1.1); }
-          66% { transform: translate(-20px, 20px) scale(0.9); }
-        }
-        .animate-blob {
-          animation: blob 7s infinite alternate;
-        }
-        .animation-delay-2000 { animation-delay: 2s; }
-        .animation-delay-4000 { animation-delay: 4s; }
-      `}</style>
     </div>
   );
 };
