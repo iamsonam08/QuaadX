@@ -60,7 +60,6 @@ const App: React.FC = () => {
 
   // Firestore Real-time Announcements Listener
   useEffect(() => {
-    // Only execute on browser client side
     if (typeof window === 'undefined') return;
 
     try {
@@ -196,42 +195,58 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-
-        {currentModule === 'DASHBOARD' && (
-          <div className="mb-6 animate-fadeIn px-2">
-            <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight leading-tight">Campus<br/>Intelligence ⚡</h2>
-            <p className="text-slate-500 dark:text-slate-400 font-medium italic text-sm mt-1">Personalized portal for the digital student.</p>
-          </div>
-        )}
       </header>
 
       <main className="flex-1 px-4 pb-10 relative z-20 overflow-y-auto no-scrollbar">
         {currentModule === 'DASHBOARD' ? (
           <div className="flex flex-col gap-6">
             
-            {/* Real-time Announcements Display */}
-            {announcements.length > 0 && (
-              <div className="animate-slideUp px-2">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-pulse"></span>
-                    Campus Broadcast
-                  </h3>
-                  <span className="text-[8px] font-bold text-slate-400/50 uppercase">{announcements.length} Active</span>
-                </div>
-                <div className="flex flex-col gap-3">
-                  {announcements.slice(0, 2).map((ann, idx) => (
-                    <div key={ann.id} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-5 rounded-[2rem] shadow-sm relative overflow-hidden group transition-all hover:border-blue-500/30">
-                      <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                        <i className="fa-solid fa-bullhorn text-2xl rotate-12"></i>
-                      </div>
-                      <h4 className="font-black text-xs text-slate-800 dark:text-slate-100 uppercase mb-1 leading-tight">{ann.title}</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed">{ann.message}</p>
-                    </div>
-                  ))}
+            {/* Real-time Announcements Display - ABSOLUTE TOP */}
+            <div className="animate-slideUp px-2 pt-2">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-black text-blue-600 dark:text-blue-400 uppercase tracking-tighter flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                  </span>
+                  📢 Announcements (Live)
+                </h3>
+                <div className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                  <span className="text-[8px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">Global Broadcast</span>
                 </div>
               </div>
-            )}
+              <div className="flex flex-col gap-4">
+                {announcements.length > 0 ? (
+                  announcements.map((ann, idx) => (
+                    <div 
+                      key={ann.id} 
+                      className="bg-white dark:bg-slate-900 border-2 border-indigo-500/10 dark:border-indigo-400/5 p-6 rounded-[2.5rem] shadow-xl relative overflow-hidden group transition-all hover:scale-[1.01] hover:border-indigo-500/30"
+                      style={{ animationDelay: `${idx * 150}ms` }}
+                    >
+                      <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/5 rounded-full blur-2xl group-hover:bg-indigo-500/10 transition-colors"></div>
+                      <h4 className="font-black text-sm text-slate-800 dark:text-slate-100 uppercase mb-2 leading-tight flex items-start gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0"></span>
+                        {ann.title}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed pl-3.5">
+                        {ann.message}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-slate-100/50 dark:bg-slate-900/50 border-2 border-dashed border-slate-200 dark:border-slate-800 p-10 rounded-[2.5rem] text-center">
+                    <i className="fa-solid fa-satellite-dish text-3xl text-slate-200 dark:text-slate-700 mb-3 animate-pulse"></i>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Scanning Campus Network...</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Dashboard Welcome Section */}
+            <div className="mb-2 animate-fadeIn px-2">
+              <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight leading-tight">Campus<br/>Intelligence ⚡</h2>
+              <p className="text-slate-500 dark:text-slate-400 font-medium italic text-sm mt-1">Personalized portal for the digital student.</p>
+            </div>
 
             <div className="grid grid-cols-2 gap-4 animate-slideUp">
               <FeatureCard title="VPai Assistant" icon="fa-robot" gradient="from-violet-600 to-fuchsia-700" onClick={() => setCurrentModule('VPAI')} className="col-span-2 py-12" desc="Smart Knowledge Interface" />
