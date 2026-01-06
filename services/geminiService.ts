@@ -37,7 +37,6 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       }
     });
 
-    // Access the .text property directly as per latest SDK guidelines.
     return response.text?.trim() || "I'm having trouble retrieving that information.";
   } catch (error) {
     console.error("Gemini Assistant Error:", error);
@@ -121,7 +120,6 @@ export async function stylizeMapImage(imageBase64: string): Promise<string | nul
       }
     });
     
-    // SAFE ACCESS to candidates and content parts to satisfy TS strict null checks (Fixes TS18048)
     const candidates = response.candidates ?? [];
     for (const candidate of candidates) {
       const parts = candidate.content?.parts ?? [];
