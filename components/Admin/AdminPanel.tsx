@@ -34,8 +34,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const syncGlobalChanges = async (newData: AppData) => {
     setIsProcessing(true);
-    setStatusMsg('SYNCING CLOUD...');
+    setStatusMsg('PUSHING TO CLOUD...');
     
+    // Firestore save handles multi-device sync via PersistenceService.subscribeToUpdates in App.tsx
     const success = await PersistenceService.saveData(newData);
     
     if (success) {
@@ -54,7 +55,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
     if (!file || !selectedCategory) return;
 
     setIsProcessing(true);
-    setStatusMsg(`READING ${file.name.toUpperCase()}...`);
+    setStatusMsg(`PROCESSING ${file.name.toUpperCase()}...`);
 
     const reader = new FileReader();
     const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
@@ -82,6 +83,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
           const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          // Convert to JSON and then stringify for the AI to read like a text table
           const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
           content = JSON.stringify(json, null, 2);
           mime = 'application/json';
@@ -92,13 +94,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         await extractAndDeploy(content, mime);
       } catch (err) {
         console.error("Admin Error:", err);
-        setStatusMsg('ERROR READING FILE');
+        setStatusMsg('FILE ERROR');
         setIsProcessing(false);
       }
     };
 
     if (isSpreadsheet) reader.readAsArrayBuffer(file);
-    else reader.readAsDataURL(file);
+    else reader.readAsText(file); // Use readAsText for plain text files
   };
 
   const handleManualTextSubmit = async () => {
@@ -118,6 +120,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         const key = CATEGORY_MAP[selectedCategory].dataKey;
         if (key) {
           const currentList = Array.isArray(appData[key]) ? appData[key] as any[] : [];
+          // Merge logic: Add extracted to existing. You might want to filter duplicates here if needed.
           const updated = { 
             ...appData, 
             [key]: [...currentList, ...extracted] 
@@ -125,13 +128,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           await syncGlobalChanges(updated);
         }
       } else {
-        setStatusMsg('AI: NO DATA FOUND');
+        setStatusMsg('AI FOUND NO DATA');
         setIsProcessing(false);
         setTimeout(() => setStatusMsg(''), 3000);
       }
     } catch (e) {
       console.error("Extraction Failed:", e);
-      setStatusMsg('EXTRACTION ERROR');
+      setStatusMsg('AI ERROR');
       setIsProcessing(false);
     }
   };
@@ -146,7 +149,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const clearSection = async (category: AdminCategory) => {
     const key = CATEGORY_MAP[category].dataKey;
-    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data?`)) return;
+    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data? This updates all devices.`)) return;
     const updated = { ...appData, [key]: [] };
     await syncGlobalChanges(updated);
   };
@@ -162,7 +165,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <i className="fa-solid fa-chevron-left"></i>
           </button>
           <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
-          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Reset</button>
+          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Wipe Hub</button>
         </div>
 
         <div className="flex gap-2 p-1.5 bg-slate-900 rounded-3xl border border-slate-800">
@@ -176,14 +179,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-3xl bg-blue-600/10 text-blue-500 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
               <i className="fa-solid fa-cloud-arrow-up text-3xl"></i>
             </button>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Campus File</p>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Files for AI</p>
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-6 space-y-4 shadow-xl">
             <textarea 
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
-              placeholder="Paste spreadsheet data or announcements here..."
+              placeholder="Paste schedule rows, student lists, or announcements here..."
               className="w-full h-32 bg-slate-800 rounded-3xl p-5 text-xs text-slate-200 outline-none border border-slate-700 focus:border-blue-500 transition-all font-bold no-scrollbar"
             />
             <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Process with AI</button>
@@ -191,16 +194,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         )}
 
         <div className="space-y-3">
-          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Global Records ({items.length})</h4>
+          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Global Live Records ({items.length})</h4>
           <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pb-10">
             {items.length === 0 ? (
-              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">Database Empty</div>
+              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Records in Cloud</div>
             ) : (
               items.map((item: any) => (
                 <div key={item.id} className="bg-slate-900/50 p-5 rounded-[2.5rem] border border-slate-800 flex justify-between items-center group hover:bg-slate-900 transition-colors">
                   <div className="flex flex-col min-w-0 pr-4">
                     <span className="text-[11px] font-black text-slate-200 uppercase truncate">{item.subject || item.name || item.title || item.day}</span>
-                    <span className="text-[8px] font-bold text-slate-600 uppercase mt-1 tracking-widest">{item.branch} • {item.year}</span>
+                    <span className="text-[8px] font-bold text-slate-600 uppercase mt-1 tracking-widest">{item.branch || 'ALL'} • {item.year || 'ALL'}</span>
                   </div>
                   <button onClick={() => deleteItem(catKey, item.id)} className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all flex-shrink-0">
                     <i className="fa-solid fa-trash text-xs"></i>
@@ -221,7 +224,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           <Logo className="w-12 h-12" />
           <div className="flex flex-col">
             <h1 className="text-xl font-black text-blue-500 tracking-tighter uppercase leading-none">Admin Hub</h1>
-            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Cloud Controller</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Global Cloud Master</span>
           </div>
         </div>
         <button onClick={onExit} className="bg-slate-900 w-11 h-11 rounded-2xl flex items-center justify-center text-rose-500 border border-slate-800 active:scale-90 transition-all hover:bg-rose-500/10"><i className="fa-solid fa-xmark"></i></button>
@@ -231,8 +234,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         {selectedCategory ? renderView(selectedCategory) : (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-[3.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
-              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Cloud Status: Active</p>
-              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">Campus Management</h2>
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full"></div>
+              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Sync Status: Active</p>
+              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">College Dashboard Control</h2>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -250,7 +254,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
       </main>
       
       {statusMsg && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20 whitespace-nowrap">
           {statusMsg}
         </div>
       )}
