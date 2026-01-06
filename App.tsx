@@ -31,21 +31,17 @@ const App: React.FC = () => {
 
   const logoTaps = useRef<{ count: number; lastTime: number }>({ count: 0, lastTime: 0 });
 
-  // Initial Data Load & Global Sync Polling
+  // Real-time Global Data Sync using Firestore Listener
   useEffect(() => {
-    const syncData = async (silent = false) => {
-      if (!silent) setIsLoading(true);
+    setIsLoading(true);
+    
+    // Subscribe to the global app data document
+    const unsubscribe = PersistenceService.subscribeToUpdates((data) => {
+      setAppData(data);
+      setIsLoading(false);
       setIsSyncing(true);
-      const data = await PersistenceService.loadData();
-      if (data) setAppData(data);
-      if (!silent) setIsLoading(false);
-      setTimeout(() => setIsSyncing(false), 1000);
-    };
-
-    syncData();
-
-    // Background Polling: Refresh every 20 seconds to catch global admin updates
-    const pollInterval = setInterval(() => syncData(true), 20000);
+      setTimeout(() => setIsSyncing(false), 800);
+    });
 
     const handleCloudSync = (event: any) => {
       if (event.detail) setAppData(event.detail);
@@ -53,7 +49,7 @@ const App: React.FC = () => {
     window.addEventListener('quadx_cloud_sync', handleCloudSync);
 
     return () => {
-      clearInterval(pollInterval);
+      unsubscribe();
       window.removeEventListener('quadx_cloud_sync', handleCloudSync);
     };
   }, []);
@@ -64,17 +60,17 @@ const App: React.FC = () => {
 
     try {
       const q = query(collection(db, "announcements"), orderBy("timestamp", "desc"));
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const unsubscribeAnnouncements = onSnapshot(q, (querySnapshot) => {
         const announcementData: Announcement[] = [];
         querySnapshot.forEach((doc) => {
           announcementData.push({ id: doc.id, ...doc.data() } as Announcement);
         });
         setAnnouncements(announcementData);
       }, (error) => {
-        console.warn("Firestore Listener Error:", error);
+        console.warn("Firestore Announcements Listener Error:", error);
       });
 
-      return () => unsubscribe();
+      return () => unsubscribeAnnouncements();
     } catch (error) {
       console.error("Firestore setup error:", error);
     }

@@ -1,8 +1,9 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
-declare var process: { env: { [key: string]: string | undefined } };
-
+// Accessing process.env.API_KEY directly allows Vite to perform static replacement.
+// Fallback to empty string if undefined to prevent build-time crashes.
 const API_KEY = process.env.API_KEY || '';
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
@@ -12,8 +13,8 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  * VPai Chat Assistant
  */
 export async function askVPai(question: string, context: AppData) {
-  if (!API_KEY || API_KEY === 'undefined') {
-    return "AI Error: API Key not found. Please check configuration.";
+  if (!API_KEY) {
+    return "AI Error: API Key not found. Please check Vercel environment variables.";
   }
 
   try {
@@ -55,7 +56,7 @@ export async function askVPai(question: string, context: AppData) {
  * AI Data Extraction with Normalization
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain") {
-  if (!API_KEY || API_KEY === 'undefined') throw new Error("API Key Missing");
+  if (!API_KEY) throw new Error("API Key Missing");
   
   const schema = CATEGORY_SCHEMAS[category];
   if (!schema) return [];
@@ -98,11 +99,9 @@ export async function extractCategoryData(category: string, content: string, mim
     const jsonText = response.text || '[]';
     const extracted = JSON.parse(jsonText);
     
-    // Ensure every item has a unique ID and normalized strings
     return extracted.map((item: any) => ({
       ...item,
       id: generateId(),
-      // Handle nested timetable slots
       slots: item.slots ? item.slots.map((s: any) => ({ ...s, id: generateId() })) : undefined
     }));
   } catch (error) {
@@ -112,7 +111,7 @@ export async function extractCategoryData(category: string, content: string, mim
 }
 
 export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
-  if (!API_KEY || API_KEY === 'undefined') return null;
+  if (!API_KEY) return null;
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',

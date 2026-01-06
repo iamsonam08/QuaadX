@@ -1,104 +1,64 @@
+
 import { AppData } from "../types";
 import { INITIAL_DATA } from "../constants";
+import { db } from "../firebase";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 /**
  * GLOBAL CAMPUS CLOUD HUB
- * Uses npoint.io for cross-device state synchronization.
+ * Migrated to Firebase Firestore for real-time, cross-device synchronization.
  */
-const CLOUD_BIN_ID = '9307f5984f884a441416'; 
-const CLOUD_URL = `https://api.npoint.io/${CLOUD_BIN_ID}`;
-const STORAGE_KEY = 'QUADX_GLOBAL_STATE_V8';
-const DB_NAME = 'QuadX_Global_DB';
-const STORE_NAME = 'app_state';
-
-const getIDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, 2);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const idbGet = async (key: string): Promise<any> => {
-  try {
-    const db = await getIDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, 'readonly');
-      const request = transaction.objectStore(STORE_NAME).get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  } catch (e) { return null; }
-};
-
-const idbSet = async (key: string, value: any): Promise<void> => {
-  try {
-    const db = await getIDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_NAME, 'readwrite');
-      const request = transaction.objectStore(STORE_NAME).put(value, key);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  } catch (e) {}
-};
+const GLOBAL_STATE_DOC_ID = "global_app_state";
+const STATE_COLLECTION = "system_config";
 
 export const PersistenceService = {
   /**
-   * Loads data from the Cloud with local fallback.
-   * Includes cache-busting to ensure latest admin data is fetched.
+   * Loads data from Firestore with real-time listener support.
    */
   async loadData(): Promise<AppData> {
     try {
-      const response = await fetch(`${CLOUD_URL}?cb=${Date.now()}`, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' }
-      });
+      const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
+      const docSnap = await getDoc(docRef);
 
-      if (response.ok) {
-        const cloudData = await response.json();
-        if (cloudData && typeof cloudData === 'object' && !Array.isArray(cloudData)) {
-          await idbSet(STORAGE_KEY, cloudData);
-          return cloudData as AppData;
-        }
+      if (docSnap.exists()) {
+        return docSnap.data() as AppData;
+      } else {
+        // Initialize if not exists
+        await setDoc(docRef, INITIAL_DATA);
+        return INITIAL_DATA;
       }
     } catch (e) {
-      console.warn("Persistence: Cloud Fetch Failed, using local cache.", e);
+      console.warn("Persistence: Firestore Load Failed, using initial data.", e);
+      return INITIAL_DATA;
     }
-
-    const cached = await idbGet(STORAGE_KEY);
-    return cached || INITIAL_DATA;
   },
 
   /**
-   * Saves data to both Local Storage and the Global Cloud Hub.
+   * Saves data to Firestore, triggering updates for all connected devices.
    */
   async saveData(data: AppData): Promise<boolean> {
     try {
-      // 1. Local Cache Update
-      await idbSet(STORAGE_KEY, data);
-
-      // 2. Broadcast to Cloud for other devices
-      const response = await fetch(CLOUD_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-
-      if (response.ok) {
-        // Dispatch local event for same-tab updates
-        window.dispatchEvent(new CustomEvent('quadx_cloud_sync', { detail: data }));
-        return true;
-      }
-      return false;
+      const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
+      await setDoc(docRef, data);
+      
+      // Local broadcast still useful for immediate UI response in the same tab
+      window.dispatchEvent(new CustomEvent('quadx_cloud_sync', { detail: data }));
+      return true;
     } catch (e) {
-      console.error("Persistence: Cloud Push Failed", e);
+      console.error("Persistence: Firestore Save Failed", e);
       return false;
     }
+  },
+
+  /**
+   * Subscribes to real-time changes across the entire app.
+   */
+  subscribeToUpdates(callback: (data: AppData) => void) {
+    const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
+    return onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        callback(docSnap.data() as AppData);
+      }
+    });
   }
 };
