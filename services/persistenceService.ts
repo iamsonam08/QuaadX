@@ -23,16 +23,12 @@ const sanitizeData = (data: any): any => {
   return sanitized;
 };
 
-/**
- * GLOBAL CAMPUS CLOUD HUB
- * Migrated to Firebase Firestore for real-time, cross-device synchronization.
- */
 const GLOBAL_STATE_DOC_ID = "global_app_state";
 const STATE_COLLECTION = "system_config";
 
 export const PersistenceService = {
   /**
-   * Loads data from Firestore with real-time listener support.
+   * Loads data from Firestore once.
    */
   async loadData(): Promise<AppData> {
     try {
@@ -42,51 +38,49 @@ export const PersistenceService = {
       if (docSnap.exists()) {
         return docSnap.data() as AppData;
       } else {
-        // Initialize if not exists
         await setDoc(docRef, sanitizeData(INITIAL_DATA));
         return INITIAL_DATA;
       }
     } catch (e) {
-      console.warn("Persistence: Firestore Load Failed, using initial data.", e);
+      console.warn("Persistence: Load Failed", e);
       return INITIAL_DATA;
     }
   },
 
   /**
-   * Saves data to Firestore, triggering updates for all connected devices.
+   * Saves data to Firestore.
    */
   async saveData(data: AppData): Promise<boolean> {
     try {
       const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
-      // Firestore does not allow 'undefined' fields. We sanitize to null.
       const cleanedData = sanitizeData(data);
       await setDoc(docRef, cleanedData);
-      
-      // Local broadcast still useful for immediate UI response in the same tab
-      window.dispatchEvent(new CustomEvent('quadx_cloud_sync', { detail: data }));
       return true;
     } catch (e) {
-      console.error("Persistence: Firestore Save Failed", e);
+      console.error("Persistence: Save Failed", e);
       return false;
     }
   },
 
   /**
-   * Subscribes to real-time changes across the entire app.
+   * Resilient subscriber for real-time updates.
    */
   subscribeToUpdates(callback: (data: AppData) => void) {
     const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
-    return onSnapshot(docRef, (docSnap) => {
-      if (docSnap.exists()) {
-        callback(docSnap.data() as AppData);
-      } else {
-        // Trigger callback with initial data if doc doesn't exist
-        callback(INITIAL_DATA);
+    
+    // Using a more robust listener configuration
+    return onSnapshot(docRef, 
+      (docSnap) => {
+        if (docSnap.exists()) {
+          callback(docSnap.data() as AppData);
+        } else {
+          callback(INITIAL_DATA);
+        }
+      }, 
+      (error) => {
+        console.warn("Firestore RPC Stream Warning (Recovering...):", error.message);
+        // We don't crash the app; Firestore automatically attempts to reconnect
       }
-    }, (error) => {
-      console.error("Firestore Subscription Error:", error);
-      // Fallback so the app doesn't hang
-      callback(INITIAL_DATA);
-    });
+    );
   }
 };

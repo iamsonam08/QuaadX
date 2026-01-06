@@ -34,20 +34,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const syncGlobalChanges = async (newData: AppData) => {
     setIsProcessing(true);
-    setStatusMsg('CLOUD SYNC IN PROGRESS...');
+    setStatusMsg('CLOUD PUSH...');
     
-    // Save to Firestore - will trigger update on all devices
     const success = await PersistenceService.saveData(newData);
     
     if (success) {
       setAppData(newData);
-      setStatusMsg('SYNCED TO ALL DEVICES ✅');
+      setStatusMsg('SYNCED ✅');
     } else {
-      setStatusMsg('CLOUD SYNC FAILED ❌');
+      setStatusMsg('SYNC FAILED ❌');
     }
     
     setIsProcessing(false);
-    setTimeout(() => setStatusMsg(''), 4000);
+    setTimeout(() => setStatusMsg(''), 3000);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -68,13 +67,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         if (selectedCategory === 'CAMPUS_MAP' && isImage) {
           const base64 = event.target?.result as string;
-          setStatusMsg('AI STYLIZING MAP...');
+          setStatusMsg('AI STYLIZING...');
           const stylized = await stylizeMapImage(base64);
-          const updated: AppData = { 
-            ...appData, 
-            campusMapImage: base64, 
-            stylizedMapImage: stylized || null 
-          };
+          const updated: AppData = { ...appData, campusMapImage: base64, stylizedMapImage: stylized || null };
           await syncGlobalChanges(updated);
           return;
         }
@@ -82,17 +77,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         if (isSpreadsheet) {
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const sheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-          
-          // Format rows into a more "readable" text table for the AI
-          content = rows.map((row, idx) => `Row ${idx + 1}: ${row.join(' | ')}`).join('\n');
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }) as any[][];
+          // Create a clean pipe-separated table for better LLM parsing
+          content = rows.filter(r => r.length > 0).map(row => row.join(' | ')).join('\n');
           mime = 'text/plain';
         } else {
           content = event.target?.result as string;
         }
 
+        console.log(`[Admin] Sending ${content.length} characters to AI for extraction.`);
         await extractAndDeploy(content, mime);
       } catch (err) {
         console.error("Admin Panel Error:", err);
@@ -108,7 +101,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const handleManualTextSubmit = async () => {
     if (!manualText.trim() || !selectedCategory) return;
     setIsProcessing(true);
-    setStatusMsg('AI EXTRACTING DATA...');
+    setStatusMsg('AI EXTRACTING...');
     await extractAndDeploy(manualText, 'text/plain');
     setManualText('');
   };
@@ -122,21 +115,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         const key = CATEGORY_MAP[selectedCategory].dataKey;
         if (key) {
           const currentList = Array.isArray(appData[key]) ? appData[key] as any[] : [];
-          // Deep merge to avoid duplicates if possible, or just append
-          const updated = { 
-            ...appData, 
-            [key]: [...currentList, ...extracted] 
-          };
+          const updated = { ...appData, [key]: [...currentList, ...extracted] };
           await syncGlobalChanges(updated);
         }
       } else {
-        setStatusMsg('AI FOUND NO MATCHES');
+        setStatusMsg('AI: NO DATA MATCHED');
         setIsProcessing(false);
         setTimeout(() => setStatusMsg(''), 3000);
       }
     } catch (e) {
-      console.error("AI Deployment Failed:", e);
-      setStatusMsg('AI ANALYSIS ERROR');
+      console.error("AI Analysis Failed:", e);
+      setStatusMsg('AI ERROR');
       setIsProcessing(false);
     }
   };
@@ -144,14 +133,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const deleteItem = async (category: AdminCategory, id: string) => {
     const key = CATEGORY_MAP[category].dataKey;
     if (!key) return;
-    const currentList = Array.isArray(appData[key]) ? appData[key] as any[] : [];
-    const updated = { ...appData, [key]: currentList.filter(i => i.id !== id) };
+    const currentList = (appData[key] as any[]).filter(i => i.id !== id);
+    const updated = { ...appData, [key]: currentList };
     await syncGlobalChanges(updated);
   };
 
   const clearSection = async (category: AdminCategory) => {
     const key = CATEGORY_MAP[category].dataKey;
-    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label}? This updates all devices instantly.`)) return;
+    if (!key || !confirm(`Wipe ${CATEGORY_MAP[category].label}?`)) return;
     const updated = { ...appData, [key]: [] };
     await syncGlobalChanges(updated);
   };
@@ -167,28 +156,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <i className="fa-solid fa-chevron-left"></i>
           </button>
           <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
-          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Wipe Section</button>
+          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Wipe Hub</button>
         </div>
 
         <div className="flex gap-2 p-1.5 bg-slate-900 rounded-3xl border border-slate-800">
-          <button onClick={() => setInputMode('FILE')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'FILE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Upload Hub</button>
-          <button onClick={() => setInputMode('TEXT')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'TEXT' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Direct Paste</button>
+          <button onClick={() => setInputMode('FILE')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'FILE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Upload File</button>
+          <button onClick={() => setInputMode('TEXT')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'TEXT' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Paste Text</button>
         </div>
         
         {inputMode === 'FILE' ? (
           <div className="bg-slate-900 border-4 border-slate-800 border-dashed rounded-[3.5rem] p-10 text-center group cursor-pointer hover:border-blue-600/50 transition-colors">
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept=".txt,.xlsx,.xls,.csv,.pdf,image/*" />
             <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-3xl bg-blue-600/10 text-blue-500 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-              <i className="fa-solid fa-file-arrow-up text-3xl"></i>
+              <i className="fa-solid fa-cloud-arrow-up text-3xl"></i>
             </button>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select Campus File</p>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Source File</p>
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-6 space-y-4 shadow-xl">
             <textarea 
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
-              placeholder="Paste spreadsheet rows or text announcements here for AI processing..."
+              placeholder="Paste schedule data or student lists here..."
               className="w-full h-32 bg-slate-800 rounded-3xl p-5 text-xs text-slate-200 outline-none border border-slate-700 focus:border-blue-500 transition-all font-bold no-scrollbar"
             />
             <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Extract with AI</button>
@@ -196,10 +185,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         )}
 
         <div className="space-y-3">
-          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Database Content ({items.length})</h4>
+          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Cloud Database ({items.length})</h4>
           <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pb-10">
             {items.length === 0 ? (
-              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Cloud Records</div>
+              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Records Found</div>
             ) : (
               items.map((item: any) => (
                 <div key={item.id} className="bg-slate-900/50 p-5 rounded-[2.5rem] border border-slate-800 flex justify-between items-center group hover:bg-slate-900 transition-colors">
@@ -226,7 +215,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           <Logo className="w-12 h-12" />
           <div className="flex flex-col">
             <h1 className="text-xl font-black text-blue-500 tracking-tighter uppercase leading-none">Admin Hub</h1>
-            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Global Sync Enabled</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Multi-Device Sync</span>
           </div>
         </div>
         <button onClick={onExit} className="bg-slate-900 w-11 h-11 rounded-2xl flex items-center justify-center text-rose-500 border border-slate-800 active:scale-90 transition-all hover:bg-rose-500/10"><i className="fa-solid fa-xmark"></i></button>
@@ -236,9 +225,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         {selectedCategory ? renderView(selectedCategory) : (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-[3.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full"></div>
-              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Cloud Master Active</p>
-              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">Data Management</h2>
+              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Cloud Status: Active</p>
+              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">College Dashboard</h2>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -256,7 +244,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
       </main>
       
       {statusMsg && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20 whitespace-nowrap">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20">
           {statusMsg}
         </div>
       )}
