@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -8,9 +7,8 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 /**
  * VPai Chat Assistant
  */
-export async function askVPai(question: string, context: AppData) {
+export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
-    // Initializing GenAI inside the function to ensure it always uses the most up-to-date API key from the environment.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const cleanContext = {
       attendance: context.attendance,
@@ -50,9 +48,8 @@ export async function askVPai(question: string, context: AppData) {
 /**
  * AI Data Extraction with Normalization
  */
-export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain") {
+export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain"): Promise<any[]> {
   try {
-    // Initializing GenAI inside the function to ensure it always uses the most up-to-date API key.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = CATEGORY_SCHEMAS[category];
     if (!schema) return [];
@@ -72,9 +69,10 @@ export async function extractCategoryData(category: string, content: string, mim
     const parts: any[] = [{ text: normalizationPrompt }];
 
     if (mimeType.startsWith('image/')) {
+      const dataPart = content.includes(',') ? content.split(',')[1] : content;
       parts.push({
         inlineData: {
-          data: content.includes(',') ? content.split(',')[1] : content,
+          data: dataPart,
           mimeType: mimeType
         }
       });
@@ -94,6 +92,8 @@ export async function extractCategoryData(category: string, content: string, mim
     const jsonText = response.text || '[]';
     const extracted = JSON.parse(jsonText);
     
+    if (!Array.isArray(extracted)) return [];
+
     return extracted.map((item: any) => ({
       ...item,
       id: generateId(),
@@ -110,7 +110,6 @@ export async function extractCategoryData(category: string, content: string, mim
  */
 export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
   try {
-    // Initializing GenAI inside the function to ensure it always uses the most up-to-date API key.
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -122,10 +121,12 @@ export async function stylizeMapImage(imageBase64: string): Promise<string | nul
       }
     });
     
-    // Iterate through candidates and parts to find the generated image.
-    for (const candidate of response.candidates || []) {
-      for (const part of candidate.content.parts) {
-        if (part.inlineData) {
+    // SAFE ACCESS to candidates and content parts to satisfy TS strict null checks (Fixes TS18048)
+    const candidates = response.candidates ?? [];
+    for (const candidate of candidates) {
+      const parts = candidate.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
           return `data:image/png;base64,${part.inlineData.data}`;
         }
       }
