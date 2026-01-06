@@ -34,13 +34,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const syncGlobalChanges = async (newData: AppData) => {
     setIsProcessing(true);
-    setStatusMsg('PUSHING TO CLOUD...');
+    setStatusMsg('CLOUD PUSH...');
     
     const success = await PersistenceService.saveData(newData);
     
     if (success) {
       setAppData(newData);
-      setStatusMsg('SYNC SUCCESS ✅');
+      setStatusMsg('SYNCED ✅');
     } else {
       setStatusMsg('SYNC FAILED ❌');
     }
@@ -67,7 +67,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         if (selectedCategory === 'CAMPUS_MAP' && isImage) {
           const base64 = event.target?.result as string;
-          setStatusMsg('AI STYLIZING MAP...');
+          setStatusMsg('AI STYLIZING...');
           const stylized = await stylizeMapImage(base64);
           const updated: AppData = { ...appData, campusMapImage: base64, stylizedMapImage: stylized || null };
           await syncGlobalChanges(updated);
@@ -80,15 +80,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           const sheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
           
-          // Header detection
           const headers = jsonRows[0] || [];
-          // Convert rows to a "Semantic Table" string: "ColName: Value | ColName: Value"
           content = jsonRows.slice(1)
             .filter(row => row.length > 0)
             .map(row => row.map((val, i) => `${headers[i] || `Col${i+1}`}: ${val}`).join(' | '))
             .join('\n');
             
-          console.log("[Admin Panel] Parsed Table String:", content);
+          console.log("[Admin] Sent to AI:", content);
           mime = 'text/plain';
         } else {
           content = event.target?.result as string;
@@ -96,8 +94,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         await extractAndDeploy(content, mime);
       } catch (err) {
-        console.error("Admin Panel File Parsing Error:", err);
-        setStatusMsg('PARSING ERROR');
+        console.error("Admin Error:", err);
+        setStatusMsg('FILE ERROR');
         setIsProcessing(false);
       }
     };
@@ -109,7 +107,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const handleManualTextSubmit = async () => {
     if (!manualText.trim() || !selectedCategory) return;
     setIsProcessing(true);
-    setStatusMsg('AI EXTRACTING...');
+    setStatusMsg('AI PROCESSING...');
     await extractAndDeploy(manualText, 'text/plain');
     setManualText('');
   };
@@ -127,12 +125,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           await syncGlobalChanges(updated);
         }
       } else {
-        setStatusMsg('AI: NO DATA MATCHED');
+        setStatusMsg('AI: NO DATA FOUND');
         setIsProcessing(false);
         setTimeout(() => setStatusMsg(''), 3000);
       }
     } catch (e) {
-      console.error("AI Analysis Failed:", e);
+      console.error("AI Failed:", e);
       setStatusMsg('AI ERROR');
       setIsProcessing(false);
     }
@@ -148,7 +146,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const clearSection = async (category: AdminCategory) => {
     const key = CATEGORY_MAP[category].dataKey;
-    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data?`)) return;
+    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label}?`)) return;
     const updated = { ...appData, [key]: [] };
     await syncGlobalChanges(updated);
   };
@@ -185,15 +183,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <textarea 
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
-              placeholder="Paste rows or announcements for AI processing..."
+              placeholder="Paste schedule data or student lists here..."
               className="w-full h-32 bg-slate-800 rounded-3xl p-5 text-xs text-slate-200 outline-none border border-slate-700 focus:border-blue-500 transition-all font-bold no-scrollbar"
             />
-            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Process with AI</button>
+            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Extract with AI</button>
           </div>
         )}
 
         <div className="space-y-3">
-          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Live Cloud Records ({items.length})</h4>
+          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Cloud Database ({items.length})</h4>
           <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pb-10">
             {items.length === 0 ? (
               <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Records Found</div>
@@ -233,7 +231,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         {selectedCategory ? renderView(selectedCategory) : (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-[3.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
-              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">System Online</p>
+              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">System Ready</p>
               <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">Master Database</h2>
             </div>
             

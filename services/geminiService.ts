@@ -54,24 +54,26 @@ export async function extractCategoryData(category: string, content: string, mim
     if (!schema) return [];
 
     const prompt = `
-      ACT AS A SENIOR DATA ANALYST FOR COLLEGE SYSTEMS.
+      ACT AS A DATA EXTRACTION EXPERT.
       CATEGORY: '${category}'
       
-      SOURCE DATA:
+      INPUT DATA (SPREADSHEET ROWS):
       """
       ${content}
       """
 
-      STRICT EXTRACTION PROTOCOL:
-      1. This data is likely a copy-paste from an Excel/CSV file or a PDF table. 
-      2. ANALYZE COLUMNS: Look for keywords like 'Subject', 'Date', 'Time', 'Room', 'Branch', 'Year'.
-      3. INFER VALUES: If a branch (e.g. 'Comp') or year (e.g. '2nd Year') is mentioned once in a header row, apply it to EVERY record found below it.
-      4. NORMALIZATION:
-         - YEARS: Map to '1st Year', '2nd Year', '3rd Year', '4th Year'.
-         - BRANCHES: Map to 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
-         - DIVISIONS: Map to 'A' or 'B'.
-      5. COMPLETION: Fill missing fields with logical defaults (e.g. room "TBA", time "09:00 AM"). Do not skip rows because of minor missing details.
-      6. OUTPUT: Return only a valid JSON array matching the requested schema. Return [] if no relevant data is found.
+      INSTRUCTIONS:
+      1. ANALYZE the input data. It is a series of rows where columns are separated by pipes (|).
+      2. MAP values to the schema.
+      3. INFER missing fields:
+         - If 'Branch' is mentioned in a header but missing in rows, use that branch.
+         - If 'Room' is missing, use "TBA".
+         - If 'Time' is missing, use "9:00 AM".
+      4. NORMALIZE:
+         - Years: '1st Year', '2nd Year', '3rd Year', '4th Year'.
+         - Branches: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - Divisions: 'A' or 'B'.
+      5. OUTPUT: Return ONLY a valid JSON array of objects.
     `;
 
     const response = await ai.models.generateContent({
@@ -93,7 +95,7 @@ export async function extractCategoryData(category: string, content: string, mim
     
     if (!Array.isArray(extracted)) return [];
 
-    console.log(`[AI Extraction Success] ${category}: Extracted ${extracted.length} records.`);
+    console.log(`[AI Extraction] ${category}: Found ${extracted.length} records.`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -144,19 +146,19 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        day: { type: Type.STRING, description: 'Monday-Sunday' },
-        branch: { type: Type.STRING, description: 'Comp, IT, Civil, etc.' },
-        year: { type: Type.STRING, description: '1st Year, 2nd Year, etc.' },
-        division: { type: Type.STRING, description: 'A or B' },
+        day: { type: Type.STRING },
+        branch: { type: Type.STRING },
+        year: { type: Type.STRING },
+        division: { type: Type.STRING },
         slots: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              time: { type: Type.STRING, description: 'e.g. 10:00 - 11:00' },
-              subject: { type: Type.STRING, description: 'Subject name' },
-              room: { type: Type.STRING, description: 'Classroom ID' },
-              color: { type: Type.STRING, description: 'Color hex code' }
+              time: { type: Type.STRING },
+              subject: { type: Type.STRING },
+              room: { type: Type.STRING },
+              color: { type: Type.STRING }
             },
             required: ["time", "subject", "room"]
           }

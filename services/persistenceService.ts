@@ -68,19 +68,17 @@ export const PersistenceService = {
   subscribeToUpdates(callback: (data: AppData) => void) {
     const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
     
-    // Using a more robust listener configuration
-    return onSnapshot(docRef, 
-      (docSnap) => {
+    return onSnapshot(docRef, {
+      next: (docSnap) => {
         if (docSnap.exists()) {
           callback(docSnap.data() as AppData);
         } else {
           callback(INITIAL_DATA);
         }
-      }, 
-      (error) => {
-        console.warn("Firestore RPC Stream Warning (Recovering...):", error.message);
-        // We don't crash the app; Firestore automatically attempts to reconnect
+      },
+      error: (error) => {
+        console.warn("Firestore RPC Connection Issue (Retrying...):", error.message);
       }
-    );
+    });
   }
 };
