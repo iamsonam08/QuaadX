@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -69,10 +70,11 @@ export async function extractCategoryData(category: string, content: string, mim
          - If 'Branch' is mentioned in a header but missing in rows, use that branch.
          - If 'Room' is missing, use "TBA".
          - If 'Time' is missing, use "9:00 AM".
-      4. NORMALIZE:
-         - Years: '1st Year', '2nd Year', '3rd Year', '4th Year'.
-         - Branches: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
-         - Divisions: 'A' or 'B'.
+      4. NORMALIZE CATEGORIES (EXTREMELY IMPORTANT):
+         - For EVENTS: The category property MUST be exactly one of: 'General', 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - If an event is for a specific branch, use that branch name.
+         - If an event is for all students (Sports, Fest, etc.), use 'General'.
+         - Never use categories like 'Workshop' or 'Cultural'; map them to 'General' or the specific 'Branch'.
       5. OUTPUT: Return ONLY a valid JSON array of objects.
     `;
 
@@ -129,7 +131,7 @@ export async function stylizeMapImage(imageBase64: string): Promise<string | nul
       const parts = candidate.content?.parts ?? [];
       for (const part of parts) {
         if (part.inlineData?.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
+          return `data:image/png;base64,{part.inlineData.data}`;
         }
       }
     }
@@ -190,7 +192,10 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
         date: { type: Type.STRING },
         venue: { type: Type.STRING },
         description: { type: Type.STRING },
-        category: { type: Type.STRING }
+        category: { 
+          type: Type.STRING, 
+          description: "Must be exactly one of: 'General', 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'" 
+        }
       },
       required: ["title", "date", "venue", "description", "category"]
     }

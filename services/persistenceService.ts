@@ -1,7 +1,8 @@
 import { AppData } from "../types";
 import { INITIAL_DATA } from "../constants";
-import { db } from "../firebase";
+import { db, storage } from "../firebase";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+import { ref, uploadString, getDownloadURL } from "firebase/storage";
 
 /**
  * Helper to clean data for Firestore (recursively converts undefined to null)
@@ -48,6 +49,23 @@ export const PersistenceService = {
   },
 
   /**
+   * Uploads a base64 image to Firebase Storage and returns the URL.
+   */
+  async uploadImage(base64: string, path: string): Promise<string | null> {
+    try {
+      const storageRef = ref(storage, path);
+      // Ensure we only have the base64 part
+      const base64Data = base64.includes(',') ? base64.split(',')[1] : base64;
+      await uploadString(storageRef, base64Data, 'base64');
+      const url = await getDownloadURL(storageRef);
+      return url;
+    } catch (e) {
+      console.error("Persistence: Image Upload Failed", e);
+      return null;
+    }
+  },
+
+  /**
    * Saves data to Firestore.
    */
   async saveData(data: AppData): Promise<boolean> {
@@ -56,8 +74,11 @@ export const PersistenceService = {
       const cleanedData = sanitizeData(data);
       await setDoc(docRef, cleanedData);
       return true;
-    } catch (e) {
+    } catch (e: any) {
       console.error("Persistence: Save Failed", e);
+      if (e.message?.includes('longer than 1048487 bytes')) {
+        alert("Persistence Error: The data is too large for the cloud database. Please ensure images are optimized.");
+      }
       return false;
     }
   },
