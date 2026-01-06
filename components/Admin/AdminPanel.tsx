@@ -72,7 +72,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           const base64 = event.target?.result as string;
           setStatusMsg('AI Map Generation...');
           const stylized = await stylizeMapImage(base64);
-          const updated = { ...appData, campusMapImage: base64, stylizedMapImage: stylized || undefined };
+          const updated: AppData = { 
+            ...appData, 
+            campusMapImage: base64, 
+            stylizedMapImage: stylized || null 
+          };
           await syncGlobalChanges(updated);
           return;
         }

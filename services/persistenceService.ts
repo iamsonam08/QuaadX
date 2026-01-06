@@ -1,8 +1,27 @@
-
 import { AppData } from "../types";
 import { INITIAL_DATA } from "../constants";
 import { db } from "../firebase";
 import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
+
+/**
+ * Helper to clean data for Firestore (recursively converts undefined to null)
+ */
+const sanitizeData = (data: any): any => {
+  if (data === undefined) return null;
+  if (data === null || typeof data !== 'object') return data;
+  
+  if (Array.isArray(data)) {
+    return data.map(sanitizeData);
+  }
+
+  const sanitized: any = {};
+  for (const key in data) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      sanitized[key] = sanitizeData(data[key]);
+    }
+  }
+  return sanitized;
+};
 
 /**
  * GLOBAL CAMPUS CLOUD HUB
@@ -24,7 +43,7 @@ export const PersistenceService = {
         return docSnap.data() as AppData;
       } else {
         // Initialize if not exists
-        await setDoc(docRef, INITIAL_DATA);
+        await setDoc(docRef, sanitizeData(INITIAL_DATA));
         return INITIAL_DATA;
       }
     } catch (e) {
@@ -39,7 +58,9 @@ export const PersistenceService = {
   async saveData(data: AppData): Promise<boolean> {
     try {
       const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
-      await setDoc(docRef, data);
+      // Firestore does not allow 'undefined' fields. We sanitize to null.
+      const cleanedData = sanitizeData(data);
+      await setDoc(docRef, cleanedData);
       
       // Local broadcast still useful for immediate UI response in the same tab
       window.dispatchEvent(new CustomEvent('quadx_cloud_sync', { detail: data }));
@@ -59,8 +80,7 @@ export const PersistenceService = {
       if (docSnap.exists()) {
         callback(docSnap.data() as AppData);
       } else {
-        // CRITICAL: Trigger callback with initial data if doc doesn't exist
-        // This prevents the infinite loading screen.
+        // Trigger callback with initial data if doc doesn't exist
         callback(INITIAL_DATA);
       }
     }, (error) => {
