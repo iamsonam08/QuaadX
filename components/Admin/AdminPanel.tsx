@@ -34,22 +34,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const syncGlobalChanges = async (newData: AppData) => {
     setIsProcessing(true);
-    setStatusMsg('Broadcasting to Global Base...');
+    setStatusMsg('SYNCING CLOUD...');
     
-    // Update local state
-    setAppData(newData);
-    
-    // Push to Cloud Hub
     const success = await PersistenceService.saveData(newData);
     
     if (success) {
-      setStatusMsg('SYNC SUCCESSFUL ✅');
+      setAppData(newData);
+      setStatusMsg('SYNC SUCCESS ✅');
     } else {
-      setStatusMsg('CLOUD SYNC FAILED ❌');
+      setStatusMsg('SYNC FAILED ❌');
     }
     
     setIsProcessing(false);
-    setTimeout(() => setStatusMsg(''), 2500);
+    setTimeout(() => setStatusMsg(''), 3000);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -57,7 +54,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
     if (!file || !selectedCategory) return;
 
     setIsProcessing(true);
-    setStatusMsg(`Uploading ${file.name}...`);
+    setStatusMsg(`READING ${file.name.toUpperCase()}...`);
 
     const reader = new FileReader();
     const isSpreadsheet = /\.(xlsx|xls|csv)$/i.test(file.name);
@@ -70,7 +67,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         if (selectedCategory === 'CAMPUS_MAP' && isImage) {
           const base64 = event.target?.result as string;
-          setStatusMsg('AI Map Generation...');
+          setStatusMsg('AI MAP PROCESSING...');
           const stylized = await stylizeMapImage(base64);
           const updated: AppData = { 
             ...appData, 
@@ -95,7 +92,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         await extractAndDeploy(content, mime);
       } catch (err) {
         console.error("Admin Error:", err);
-        setStatusMsg('ERROR: Could not read file.');
+        setStatusMsg('ERROR READING FILE');
         setIsProcessing(false);
       }
     };
@@ -107,7 +104,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const handleManualTextSubmit = async () => {
     if (!manualText.trim() || !selectedCategory) return;
     setIsProcessing(true);
-    setStatusMsg('AI Knowledge Sync...');
+    setStatusMsg('AI EXTRACTING...');
     await extractAndDeploy(manualText, 'text/plain');
     setManualText('');
   };
@@ -120,19 +117,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
       if (extracted && extracted.length > 0) {
         const key = CATEGORY_MAP[selectedCategory].dataKey;
         if (key) {
+          const currentList = Array.isArray(appData[key]) ? appData[key] as any[] : [];
           const updated = { 
             ...appData, 
-            [key]: [...(appData[key] as any[]), ...extracted] 
+            [key]: [...currentList, ...extracted] 
           };
           await syncGlobalChanges(updated);
         }
       } else {
-        setStatusMsg('AI: No data matched schema.');
+        setStatusMsg('AI: NO DATA FOUND');
         setIsProcessing(false);
+        setTimeout(() => setStatusMsg(''), 3000);
       }
     } catch (e) {
       console.error("Extraction Failed:", e);
-      setStatusMsg('AI Extraction Failed.');
+      setStatusMsg('EXTRACTION ERROR');
       setIsProcessing(false);
     }
   };
@@ -140,20 +139,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const deleteItem = async (category: AdminCategory, id: string) => {
     const key = CATEGORY_MAP[category].dataKey;
     if (!key) return;
-    const updated = { ...appData, [key]: (appData[key] as any[]).filter(i => i.id !== id) };
+    const currentList = Array.isArray(appData[key]) ? appData[key] as any[] : [];
+    const updated = { ...appData, [key]: currentList.filter(i => i.id !== id) };
     await syncGlobalChanges(updated);
   };
 
   const clearSection = async (category: AdminCategory) => {
     const key = CATEGORY_MAP[category].dataKey;
-    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data from Cloud?`)) return;
+    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data?`)) return;
     const updated = { ...appData, [key]: [] };
     await syncGlobalChanges(updated);
   };
 
   const renderView = (catKey: AdminCategory) => {
     const cat = CATEGORY_MAP[catKey];
-    const items = cat.dataKey ? (appData[cat.dataKey] as any[]) : [];
+    const items = cat.dataKey ? (Array.isArray(appData[cat.dataKey]) ? appData[cat.dataKey] as any[] : []) : [];
 
     return (
       <div className="space-y-6">
@@ -161,13 +161,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           <button onClick={() => setSelectedCategory(null)} className="w-12 h-12 rounded-2xl bg-slate-900 flex items-center justify-center text-blue-500 border border-slate-800 active:scale-90 transition-all">
             <i className="fa-solid fa-chevron-left"></i>
           </button>
-          <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label} Hub</h3>
-          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Clear All</button>
+          <h3 className="text-lg font-black text-white uppercase tracking-tighter">{cat.label}</h3>
+          <button onClick={() => clearSection(catKey)} className="text-[10px] font-black text-rose-500 uppercase px-3 py-1 bg-rose-500/10 rounded-full hover:bg-rose-500 transition-all">Reset</button>
         </div>
 
         <div className="flex gap-2 p-1.5 bg-slate-900 rounded-3xl border border-slate-800">
-          <button onClick={() => setInputMode('FILE')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'FILE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Cloud Upload</button>
-          <button onClick={() => setInputMode('TEXT')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'TEXT' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>AI Input</button>
+          <button onClick={() => setInputMode('FILE')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'FILE' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Upload File</button>
+          <button onClick={() => setInputMode('TEXT')} className={`flex-1 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all ${inputMode === 'TEXT' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500'}`}>Paste Text</button>
         </div>
         
         {inputMode === 'FILE' ? (
@@ -176,17 +176,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <button onClick={() => fileInputRef.current?.click()} className="w-16 h-16 rounded-3xl bg-blue-600/10 text-blue-500 flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
               <i className="fa-solid fa-cloud-arrow-up text-3xl"></i>
             </button>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Campus Document</p>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Select Campus File</p>
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-[3rem] p-6 space-y-4 shadow-xl">
             <textarea 
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
-              placeholder="Enter updates..."
+              placeholder="Paste spreadsheet data or announcements here..."
               className="w-full h-32 bg-slate-800 rounded-3xl p-5 text-xs text-slate-200 outline-none border border-slate-700 focus:border-blue-500 transition-all font-bold no-scrollbar"
             />
-            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Push to Cloud</button>
+            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Process with AI</button>
           </div>
         )}
 
@@ -194,7 +194,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Global Records ({items.length})</h4>
           <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pb-10">
             {items.length === 0 ? (
-              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Data in Cloud</div>
+              <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">Database Empty</div>
             ) : (
               items.map((item: any) => (
                 <div key={item.id} className="bg-slate-900/50 p-5 rounded-[2.5rem] border border-slate-800 flex justify-between items-center group hover:bg-slate-900 transition-colors">
@@ -220,8 +220,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         <div className="flex items-center gap-4">
           <Logo className="w-12 h-12" />
           <div className="flex flex-col">
-            <h1 className="text-xl font-black text-blue-500 tracking-tighter uppercase leading-none">Admin Base</h1>
-            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Global Cloud Master</span>
+            <h1 className="text-xl font-black text-blue-500 tracking-tighter uppercase leading-none">Admin Hub</h1>
+            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Cloud Controller</span>
           </div>
         </div>
         <button onClick={onExit} className="bg-slate-900 w-11 h-11 rounded-2xl flex items-center justify-center text-rose-500 border border-slate-800 active:scale-90 transition-all hover:bg-rose-500/10"><i className="fa-solid fa-xmark"></i></button>
@@ -231,9 +231,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         {selectedCategory ? renderView(selectedCategory) : (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-[3.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
-              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Live QuadX Network</p>
-              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">College Command<br/>Center</h2>
-              <i className="fa-solid fa-tower-broadcast absolute -right-6 -bottom-6 text-[8rem] text-white/5 rotate-12"></i>
+              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Cloud Status: Active</p>
+              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">Campus Management</h2>
             </div>
             
             <div className="grid grid-cols-2 gap-4">

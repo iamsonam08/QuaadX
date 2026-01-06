@@ -53,35 +53,25 @@ export async function extractCategoryData(category: string, content: string, mim
     const schema = CATEGORY_SCHEMAS[category];
     if (!schema) return [];
 
-    const normalizationPrompt = `
-      Extract structured JSON data for the college category: '${category}'.
+    const prompt = `
+      Extract a JSON array of records for the college category: '${category}'.
       
-      STRICT NORMALIZATION RULES:
-      - YEARS: Convert 'FE' to '1st Year', 'SE' to '2nd Year', 'TE' to '3rd Year', 'BE' to '4th Year'.
-      - BRANCHES: Use only these keys: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
-      - DAYS: Use full names: 'Monday', 'Tuesday', etc.
-      - DIVISIONS: Use 'A' or 'B'.
-      
-      Return a valid JSON array. If no records are found, return [].
+      SOURCE DATA:
+      ${content}
+
+      INSTRUCTIONS:
+      1. Map all relevant information from the source data into the schema provided.
+      2. If data is messy (like a spreadsheet copy-paste), use your best judgment to find column headers.
+      3. For YEARS: Always convert to '1st Year', '2nd Year', '3rd Year', or '4th Year'.
+      4. For BRANCHES: Map to 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', or 'E&TC'.
+      5. For DIVISIONS: Use 'A' or 'B'.
+      6. For ATTENDANCE: If 'totalClasses' or 'attendedClasses' are missing but a percentage is given, assume 100 total classes and calculate attended.
+      7. Return an EMPTY ARRAY [] if absolutely no data related to ${category} is found.
     `;
-
-    const parts: any[] = [{ text: normalizationPrompt }];
-
-    if (mimeType.startsWith('image/')) {
-      const dataPart = content.includes(',') ? content.split(',')[1] : content;
-      parts.push({
-        inlineData: {
-          data: dataPart,
-          mimeType: mimeType
-        }
-      });
-    } else {
-      parts.push({ text: `INPUT SOURCE DATA:\n${content}` });
-    }
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: { parts },
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
@@ -92,6 +82,8 @@ export async function extractCategoryData(category: string, content: string, mim
     const extracted = JSON.parse(jsonText);
     
     if (!Array.isArray(extracted)) return [];
+
+    console.log(`AI extracted ${extracted.length} records for ${category}`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -105,7 +97,7 @@ export async function extractCategoryData(category: string, content: string, mim
 }
 
 /**
- * Stylize Map Image using Gemini Image generation/editing
+ * Stylize Map Image
  */
 export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
   try {
@@ -142,19 +134,19 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        day: { type: Type.STRING },
-        branch: { type: Type.STRING },
-        year: { type: Type.STRING },
-        division: { type: Type.STRING },
+        day: { type: Type.STRING, description: 'Full day name, e.g., Monday' },
+        branch: { type: Type.STRING, description: 'Academic branch e.g. Comp, IT' },
+        year: { type: Type.STRING, description: 'e.g. 1st Year, 2nd Year' },
+        division: { type: Type.STRING, description: 'A or B' },
         slots: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              time: { type: Type.STRING },
-              subject: { type: Type.STRING },
-              room: { type: Type.STRING },
-              color: { type: Type.STRING }
+              time: { type: Type.STRING, description: 'Time duration, e.g. 09:00 - 10:00' },
+              subject: { type: Type.STRING, description: 'Short subject name' },
+              room: { type: Type.STRING, description: 'Room number or lab name' },
+              color: { type: Type.STRING, description: 'A hex color or basic color name' }
             },
             required: ["time", "subject", "room"]
           }
@@ -168,11 +160,11 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        name: { type: Type.STRING },
-        amount: { type: Type.STRING },
-        deadline: { type: Type.STRING },
-        eligibility: { type: Type.STRING },
-        category: { type: Type.STRING, description: 'Must be "GIRLS" or "GENERAL"' }
+        name: { type: Type.STRING, description: 'Official name of the scholarship' },
+        amount: { type: Type.STRING, description: 'Financial benefit amount' },
+        deadline: { type: Type.STRING, description: 'Last date to apply' },
+        eligibility: { type: Type.STRING, description: 'Short eligibility criteria' },
+        category: { type: Type.STRING, description: 'Must be GIRLS or GENERAL' }
       },
       required: ["name", "amount", "deadline", "eligibility", "category"]
     }
@@ -182,11 +174,11 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        title: { type: Type.STRING },
-        date: { type: Type.STRING },
-        venue: { type: Type.STRING },
-        description: { type: Type.STRING },
-        category: { type: Type.STRING, description: 'Branch name or "General"' }
+        title: { type: Type.STRING, description: 'Name of the event' },
+        date: { type: Type.STRING, description: 'Date of event' },
+        venue: { type: Type.STRING, description: 'Location on campus' },
+        description: { type: Type.STRING, description: 'Brief overview' },
+        category: { type: Type.STRING, description: 'Branch name or General' }
       },
       required: ["title", "date", "venue", "description", "category"]
     }
@@ -196,13 +188,13 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        subject: { type: Type.STRING },
-        date: { type: Type.STRING },
-        time: { type: Type.STRING },
-        venue: { type: Type.STRING },
-        branch: { type: Type.STRING },
-        year: { type: Type.STRING },
-        division: { type: Type.STRING }
+        subject: { type: Type.STRING, description: 'Exam subject' },
+        date: { type: Type.STRING, description: 'Exam date' },
+        time: { type: Type.STRING, description: 'Exam timing' },
+        venue: { type: Type.STRING, description: 'Hall or room number' },
+        branch: { type: Type.STRING, description: 'Academic branch' },
+        year: { type: Type.STRING, description: 'Academic year' },
+        division: { type: Type.STRING, description: 'Division A or B' }
       },
       required: ["subject", "date", "time", "venue", "branch", "year", "division"]
     }
@@ -212,12 +204,12 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        company: { type: Type.STRING },
-        role: { type: Type.STRING },
-        location: { type: Type.STRING },
-        stipend: { type: Type.STRING },
-        branch: { type: Type.STRING },
-        year: { type: Type.STRING }
+        company: { type: Type.STRING, description: 'Company name' },
+        role: { type: Type.STRING, description: 'Job role' },
+        location: { type: Type.STRING, description: 'City or Remote' },
+        stipend: { type: Type.STRING, description: 'Payment amount' },
+        branch: { type: Type.STRING, description: 'Target branch' },
+        year: { type: Type.STRING, description: 'Target year' }
       },
       required: ["company", "role", "location", "stipend", "branch", "year"]
     }
@@ -227,12 +219,12 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        subject: { type: Type.STRING },
-        percentage: { type: Type.NUMBER },
-        totalClasses: { type: Type.NUMBER },
-        attendedClasses: { type: Type.NUMBER },
-        branch: { type: Type.STRING },
-        year: { type: Type.STRING }
+        subject: { type: Type.STRING, description: 'Subject name' },
+        percentage: { type: Type.NUMBER, description: 'Numerical percentage value' },
+        totalClasses: { type: Type.NUMBER, description: 'Total classes conducted' },
+        attendedClasses: { type: Type.NUMBER, description: 'Classes attended by student' },
+        branch: { type: Type.STRING, description: 'Academic branch' },
+        year: { type: Type.STRING, description: 'Academic year' }
       },
       required: ["subject", "percentage", "totalClasses", "attendedClasses", "branch", "year"]
     }
