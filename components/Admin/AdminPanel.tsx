@@ -34,13 +34,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const syncGlobalChanges = async (newData: AppData) => {
     setIsProcessing(true);
-    setStatusMsg('CLOUD PUSH...');
+    setStatusMsg('PUSHING TO CLOUD...');
     
     const success = await PersistenceService.saveData(newData);
     
     if (success) {
       setAppData(newData);
-      setStatusMsg('SYNCED ✅');
+      setStatusMsg('SYNC SUCCESS ✅');
     } else {
       setStatusMsg('SYNC FAILED ❌');
     }
@@ -67,7 +67,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         if (selectedCategory === 'CAMPUS_MAP' && isImage) {
           const base64 = event.target?.result as string;
-          setStatusMsg('AI STYLIZING...');
+          setStatusMsg('AI STYLIZING MAP...');
           const stylized = await stylizeMapImage(base64);
           const updated: AppData = { ...appData, campusMapImage: base64, stylizedMapImage: stylized || null };
           await syncGlobalChanges(updated);
@@ -77,19 +77,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         if (isSpreadsheet) {
           const data = new Uint8Array(event.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: 'array' });
-          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 }) as any[][];
-          // Create a clean pipe-separated table for better LLM parsing
-          content = rows.filter(r => r.length > 0).map(row => row.join(' | ')).join('\n');
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+          
+          // Header detection
+          const headers = jsonRows[0] || [];
+          // Convert rows to a "Semantic Table" string: "ColName: Value | ColName: Value"
+          content = jsonRows.slice(1)
+            .filter(row => row.length > 0)
+            .map(row => row.map((val, i) => `${headers[i] || `Col${i+1}`}: ${val}`).join(' | '))
+            .join('\n');
+            
+          console.log("[Admin Panel] Parsed Table String:", content);
           mime = 'text/plain';
         } else {
           content = event.target?.result as string;
         }
 
-        console.log(`[Admin] Sending ${content.length} characters to AI for extraction.`);
         await extractAndDeploy(content, mime);
       } catch (err) {
-        console.error("Admin Panel Error:", err);
-        setStatusMsg('FILE PARSING ERROR');
+        console.error("Admin Panel File Parsing Error:", err);
+        setStatusMsg('PARSING ERROR');
         setIsProcessing(false);
       }
     };
@@ -140,7 +148,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
   const clearSection = async (category: AdminCategory) => {
     const key = CATEGORY_MAP[category].dataKey;
-    if (!key || !confirm(`Wipe ${CATEGORY_MAP[category].label}?`)) return;
+    if (!key || !confirm(`Wipe all ${CATEGORY_MAP[category].label} data?`)) return;
     const updated = { ...appData, [key]: [] };
     await syncGlobalChanges(updated);
   };
@@ -177,15 +185,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             <textarea 
               value={manualText}
               onChange={(e) => setManualText(e.target.value)}
-              placeholder="Paste schedule data or student lists here..."
+              placeholder="Paste rows or announcements for AI processing..."
               className="w-full h-32 bg-slate-800 rounded-3xl p-5 text-xs text-slate-200 outline-none border border-slate-700 focus:border-blue-500 transition-all font-bold no-scrollbar"
             />
-            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Extract with AI</button>
+            <button onClick={handleManualTextSubmit} disabled={!manualText.trim() || isProcessing} className="w-full py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95 disabled:opacity-50">Process with AI</button>
           </div>
         )}
 
         <div className="space-y-3">
-          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Cloud Database ({items.length})</h4>
+          <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Live Cloud Records ({items.length})</h4>
           <div className="space-y-2 max-h-[40vh] overflow-y-auto no-scrollbar pb-10">
             {items.length === 0 ? (
               <div className="p-12 border border-slate-900 rounded-[2.5rem] text-center text-[9px] text-slate-700 font-black uppercase tracking-[0.3em]">No Records Found</div>
@@ -215,7 +223,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           <Logo className="w-12 h-12" />
           <div className="flex flex-col">
             <h1 className="text-xl font-black text-blue-500 tracking-tighter uppercase leading-none">Admin Hub</h1>
-            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Multi-Device Sync</span>
+            <span className="text-[9px] font-bold text-slate-600 uppercase mt-1">Cloud Sync Active</span>
           </div>
         </div>
         <button onClick={onExit} className="bg-slate-900 w-11 h-11 rounded-2xl flex items-center justify-center text-rose-500 border border-slate-800 active:scale-90 transition-all hover:bg-rose-500/10"><i className="fa-solid fa-xmark"></i></button>
@@ -225,8 +233,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
         {selectedCategory ? renderView(selectedCategory) : (
           <div className="space-y-6">
             <div className="bg-gradient-to-br from-slate-900 to-slate-950 p-10 rounded-[3.5rem] border border-slate-800 shadow-2xl relative overflow-hidden">
-              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">Cloud Status: Active</p>
-              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">College Dashboard</h2>
+              <p className="text-blue-500 text-[9px] font-black uppercase tracking-[0.3em] mb-3">System Online</p>
+              <h2 className="text-3xl font-black text-white tracking-tighter leading-tight">Master Database</h2>
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -244,7 +252,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
       </main>
       
       {statusMsg && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-2xl z-[100] animate-bounce text-center border-2 border-white/20 whitespace-nowrap">
           {statusMsg}
         </div>
       )}

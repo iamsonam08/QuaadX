@@ -54,23 +54,24 @@ export async function extractCategoryData(category: string, content: string, mim
     if (!schema) return [];
 
     const prompt = `
-      EXTRACT DATA FOR CATEGORY: '${category}'
+      ACT AS A SENIOR DATA ANALYST FOR COLLEGE SYSTEMS.
+      CATEGORY: '${category}'
       
-      SOURCE TEXT (MESSY DATA):
+      SOURCE DATA:
       """
       ${content}
       """
 
-      STRICT EXTRACTION RULES:
-      1. This data is likely a copy-paste from a spreadsheet or PDF. Rows are separated by newlines, columns by pipes (|) or spaces.
-      2. IGNORE non-data text like "Instructions", "Page 1", "Headers", etc.
-      3. INFER CONTEXT: If a single header (e.g. "Year: 3rd Year") exists at the top, apply it to all subsequent records.
-      4. MAPPING:
-         - YEARS: Always map to '1st Year', '2nd Year', '3rd Year', '4th Year'.
-         - BRANCHES: Always map to 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
-         - DIVISIONS: Always 'A' or 'B'.
-      5. FILL DEFAULTS: If a room is missing, use "TBA". If a time is missing, use "9:00 AM". DO NOT skip a record just because one field is missing.
-      6. OUTPUT: Return ONLY a valid JSON array. If no data exists, return [].
+      STRICT EXTRACTION PROTOCOL:
+      1. This data is likely a copy-paste from an Excel/CSV file or a PDF table. 
+      2. ANALYZE COLUMNS: Look for keywords like 'Subject', 'Date', 'Time', 'Room', 'Branch', 'Year'.
+      3. INFER VALUES: If a branch (e.g. 'Comp') or year (e.g. '2nd Year') is mentioned once in a header row, apply it to EVERY record found below it.
+      4. NORMALIZATION:
+         - YEARS: Map to '1st Year', '2nd Year', '3rd Year', '4th Year'.
+         - BRANCHES: Map to 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - DIVISIONS: Map to 'A' or 'B'.
+      5. COMPLETION: Fill missing fields with logical defaults (e.g. room "TBA", time "09:00 AM"). Do not skip rows because of minor missing details.
+      6. OUTPUT: Return only a valid JSON array matching the requested schema. Return [] if no relevant data is found.
     `;
 
     const response = await ai.models.generateContent({
@@ -82,14 +83,17 @@ export async function extractCategoryData(category: string, content: string, mim
       },
     });
 
-    const text = response.text || '[]';
-    // Deep cleaning of the JSON string to ensure no markdown or leading/trailing garbage
-    const sanitizedJson = text.substring(text.indexOf('['), text.lastIndexOf(']') + 1) || '[]';
+    const rawText = response.text || '[]';
+    // Deep clean the string to ensure valid JSON
+    const jsonStart = rawText.indexOf('[');
+    const jsonEnd = rawText.lastIndexOf(']') + 1;
+    const sanitizedJson = jsonStart !== -1 ? rawText.substring(jsonStart, jsonEnd) : '[]';
+    
     const extracted = JSON.parse(sanitizedJson);
     
     if (!Array.isArray(extracted)) return [];
 
-    console.log(`[AI Extraction] ${category} -> Extracted ${extracted.length} valid records.`);
+    console.log(`[AI Extraction Success] ${category}: Extracted ${extracted.length} records.`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -140,9 +144,9 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
-        day: { type: Type.STRING, description: 'Day (e.g. Monday)' },
-        branch: { type: Type.STRING, description: 'Branch (e.g. Comp, IT)' },
-        year: { type: Type.STRING, description: 'Year (e.g. 1st Year)' },
+        day: { type: Type.STRING, description: 'Monday-Sunday' },
+        branch: { type: Type.STRING, description: 'Comp, IT, Civil, etc.' },
+        year: { type: Type.STRING, description: '1st Year, 2nd Year, etc.' },
         division: { type: Type.STRING, description: 'A or B' },
         slots: {
           type: Type.ARRAY,
@@ -150,9 +154,9 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
             type: Type.OBJECT,
             properties: {
               time: { type: Type.STRING, description: 'e.g. 10:00 - 11:00' },
-              subject: { type: Type.STRING, description: 'Subject' },
-              room: { type: Type.STRING, description: 'Room' },
-              color: { type: Type.STRING, description: 'Optional color' }
+              subject: { type: Type.STRING, description: 'Subject name' },
+              room: { type: Type.STRING, description: 'Classroom ID' },
+              color: { type: Type.STRING, description: 'Color hex code' }
             },
             required: ["time", "subject", "room"]
           }
