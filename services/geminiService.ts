@@ -1,11 +1,18 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
-// Accessing process.env.API_KEY directly allows Vite to perform static replacement.
-// Fallback to empty string if undefined to prevent build-time crashes.
-const API_KEY = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+// We use a lazy initialization pattern to ensure the GoogleGenAI instance is only 
+// created when needed, which avoids top-level execution issues during build time.
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    // Vite's 'define' will replace process.env.API_KEY with the actual value or an empty string.
+    const apiKey = process.env.API_KEY || "";
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -13,11 +20,12 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  * VPai Chat Assistant
  */
 export async function askVPai(question: string, context: AppData) {
-  if (!API_KEY) {
-    return "AI Error: API Key not found. Please check Vercel environment variables.";
+  if (!process.env.API_KEY) {
+    return "AI Error: API Key not found. Please check your environment variables.";
   }
 
   try {
+    const ai = getAI();
     const cleanContext = {
       attendance: context.attendance,
       timetable: context.timetable,
@@ -56,8 +64,9 @@ export async function askVPai(question: string, context: AppData) {
  * AI Data Extraction with Normalization
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain") {
-  if (!API_KEY) throw new Error("API Key Missing");
+  if (!process.env.API_KEY) throw new Error("API Key Missing");
   
+  const ai = getAI();
   const schema = CATEGORY_SCHEMAS[category];
   if (!schema) return [];
 
@@ -111,8 +120,9 @@ export async function extractCategoryData(category: string, content: string, mim
 }
 
 export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
-  if (!API_KEY) return null;
+  if (!process.env.API_KEY) return null;
   try {
+    const ai = getAI();
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
