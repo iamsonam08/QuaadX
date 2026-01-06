@@ -38,7 +38,7 @@ const App: React.FC = () => {
     // Subscribe to the global app data document
     const unsubscribe = PersistenceService.subscribeToUpdates((data) => {
       setAppData(data);
-      setIsLoading(false);
+      setIsLoading(false); // This will now always fire thanks to updated service logic
       setIsSyncing(true);
       setTimeout(() => setIsSyncing(false), 800);
     });

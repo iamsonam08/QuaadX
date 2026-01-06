@@ -58,7 +58,15 @@ export const PersistenceService = {
     return onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         callback(docSnap.data() as AppData);
+      } else {
+        // CRITICAL: Trigger callback with initial data if doc doesn't exist
+        // This prevents the infinite loading screen.
+        callback(INITIAL_DATA);
       }
+    }, (error) => {
+      console.error("Firestore Subscription Error:", error);
+      // Fallback so the app doesn't hang
+      callback(INITIAL_DATA);
     });
   }
 };
