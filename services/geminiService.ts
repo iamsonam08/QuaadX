@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -9,7 +10,7 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  */
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
-    // Initialize the AI client inside the function to ensure the most up-to-date API key is used
+    // Initialize the AI client inside the function
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     // Prepare a clean, compact context for the AI
@@ -23,10 +24,10 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       campusNotes: context.rawKnowledge || [],
     };
     
-    // Use gemini-3-pro-preview for complex reasoning over the campus database
+    // Using gemini-3-flash-preview for high speed and reliable connectivity
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
-      contents: [{ parts: [{ text: question }] }],
+      model: 'gemini-3-flash-preview',
+      contents: question,
       config: {
         systemInstruction: `You are VPai, the polite, professional, and helpful official AI companion for QuadX College.
         
@@ -41,7 +42,7 @@ export async function askVPai(question: string, context: AppData): Promise<strin
         5. FORMATTING: Use **bold** for subjects, dates, room numbers, and important values.
         6. ATTENDANCE: When asked about attendance, summarize the percentage and class count for that subject.
         7. TIMETABLE: Clearly state class timings and locations.`,
-        temperature: 0.1, // Lower temperature for higher factual accuracy
+        temperature: 0.1,
         topP: 0.9,
       }
     });
@@ -85,7 +86,7 @@ export async function extractCategoryData(category: string, content: string, mim
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
