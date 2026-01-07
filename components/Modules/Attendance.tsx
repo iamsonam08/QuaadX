@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { AppData } from '../../types';
 
@@ -15,12 +14,7 @@ const Attendance: React.FC<AttendanceProps> = ({ data, onBack }) => {
   const [selYear, setSelYear] = useState(years[0]);
 
   const filteredAttendance = useMemo(() => {
-    return data.attendance.filter(a => {
-      // Normalizing comparison to avoid issues with extra spaces or case mismatches
-      const branchMatch = a.branch?.trim().toLowerCase() === selBranch.trim().toLowerCase();
-      const yearMatch = a.year?.trim().toLowerCase() === selYear.trim().toLowerCase();
-      return branchMatch && yearMatch;
-    });
+    return data.attendance.filter(a => a.branch === selBranch && a.year === selYear);
   }, [data.attendance, selBranch, selYear]);
 
   const averageAttendance = useMemo(() => {
@@ -55,12 +49,11 @@ const Attendance: React.FC<AttendanceProps> = ({ data, onBack }) => {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-8 shadow-xl border border-emerald-50 dark:border-slate-800 min-h-[40vh] flex flex-col">
+      <div className="bg-white dark:bg-slate-900 rounded-[3rem] p-8 shadow-xl border border-emerald-50 dark:border-slate-800">
         {filteredAttendance.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-10">
+          <div className="text-center py-10">
             <i className="fa-solid fa-chart-line text-4xl text-slate-200 dark:text-slate-700 mb-4"></i>
-            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">No records for {selBranch} - {selYear}</p>
-            <p className="text-[8px] text-slate-300 dark:text-slate-600 mt-2 font-bold uppercase">Check filters or contact administration</p>
+            <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">No local records found</p>
           </div>
         ) : (
           <>
@@ -69,7 +62,7 @@ const Attendance: React.FC<AttendanceProps> = ({ data, onBack }) => {
               <div className="text-slate-400 text-[9px] font-black uppercase tracking-[0.2em] mt-2">Overall Performance</div>
             </div>
 
-            <div className="space-y-8 pb-4">
+            <div className="space-y-8">
               {filteredAttendance.map((a, i) => (
                 <div key={a.id} className="space-y-3 animate-slideUp" style={{ animationDelay: `${i * 100}ms` }}>
                   <div className="flex justify-between items-center text-[10px] font-black uppercase">

@@ -10,67 +10,37 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const cleanContext = {
+      attendance: context.attendance,
+      timetable: context.timetable,
+      exams: context.exams,
+      scholarships: context.scholarships,
+      internships: context.internships,
+      events: context.events,
+    };
     
-    // Construct a textual knowledge base from the available documents
-    const knowledgeParts: string[] = [];
-
-    if (context.rawKnowledge && context.rawKnowledge.length > 0) {
-      knowledgeParts.push("GENERAL CAMPUS INFO:\n" + context.rawKnowledge.join("\n"));
-    }
-    if (context.attendance && context.attendance.length > 0) {
-      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% for ${a.branch} ${a.year}`).join("\n"));
-    }
-    if (context.timetable && context.timetable.length > 0) {
-      knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- ${t.day} (${t.branch} ${t.year} Div ${t.division}): ${t.slots.map(s => `${s.time} ${s.subject}`).join(", ")}`).join("\n"));
-    }
-    if (context.exams && context.exams.length > 0) {
-      knowledgeParts.push("EXAM SCHEDULES:\n" + context.exams.map(e => `- ${e.subject} on ${e.date} at ${e.time} (${e.branch})`).join("\n"));
-    }
-    if (context.scholarships && context.scholarships.length > 0) {
-      knowledgeParts.push("SCHOLARSHIP OPPORTUNITIES:\n" + context.scholarships.map(s => `- ${s.name}: ${s.amount}, Deadline: ${s.deadline}`).join("\n"));
-    }
-    if (context.internships && context.internships.length > 0) {
-      knowledgeParts.push("INTERNSHIP LISTINGS:\n" + context.internships.map(i => `- ${i.company} (${i.role}), Stipend: ${i.stipend}`).join("\n"));
-    }
-    if (context.events && context.events.length > 0) {
-      knowledgeParts.push("CAMPUS EVENTS:\n" + context.events.map(e => `- ${e.title} (${e.date}): ${e.description}`).join("\n"));
-    }
-
-    const fullKnowledgeBase = knowledgeParts.length > 0 
-      ? knowledgeParts.join("\n\n") 
-      : "No specific records available in the database yet.";
-
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: question,
       config: {
-        systemInstruction: `You are VPai, the polite and helpful official AI companion for QuadX College.
+        systemInstruction: `You are VPai, the official AI for QuadX College.
         
-Your goal is to answer questions strictly and accurately using the provided CAMPUS KNOWLEDGE BASE.
-
-CAMPUS KNOWLEDGE BASE:
-${fullKnowledgeBase}
-
-STRICT OPERATING RULES:
-1. ALWAYS be polite and professional.
-2. Answer strictly based on the provided knowledge base above.
-3. If the information is NOT in the knowledge base, politely say: "I apologize, but I don't have that specific information in my records yet."
-4. KEEP ANSWERS SHORT. Provide a concise but accurate response.
-5. Use **bold** for key details like dates, times, subject names, or amounts.
-6. Use bullet points for any lists.
-7. Always refer to yourself as VPai.`,
+        CONTEXT:
+        ${JSON.stringify(cleanContext, null, 2)}
+        
+        STRICT RULES:
+        1. Only answer using the CONTEXT provided.
+        2. If info is missing, say: "Data not available in my current records."
+        3. Be concise. Use **bold** for important dates/times/rooms.
+        4. When asked about attendance, summarize the percentages.`,
         temperature: 0.1,
       }
     });
 
-    if (response && response.text) {
-      return response.text.trim();
-    }
-    
-    return "I'm sorry, I couldn't find an answer to that in our campus records.";
+    return response.text?.trim() || "I'm having trouble retrieving that information.";
   } catch (error) {
-    console.error("VPai Connection Error:", error);
-    return "I'm having a slight problem connecting to my campus database right now. Please try asking me again!";
+    console.error("Gemini Assistant Error:", error);
+    return "Campus AI is briefly offline. Please try again.";
   }
 }
 
@@ -87,17 +57,24 @@ export async function extractCategoryData(category: string, content: string, mim
       ACT AS A DATA EXTRACTION EXPERT.
       CATEGORY: '${category}'
       
-      INPUT DATA:
+      INPUT DATA (SPREADSHEET ROWS):
       """
       ${content}
       """
 
-      STRICT NORMALIZATION RULES:
-      1. BRANCH: Must be EXACTLY one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
-      2. YEAR: Must be EXACTLY one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
-      3. EVENT CATEGORY: Must be one of the Branches above OR 'General'.
-      
-      OUTPUT: Return ONLY a valid JSON array of objects matching the schema.
+      INSTRUCTIONS:
+      1. ANALYZE the input data. It is a series of rows where columns are separated by pipes (|).
+      2. MAP values to the schema.
+      3. INFER missing fields:
+         - If 'Branch' is mentioned in a header but missing in rows, use that branch.
+         - If 'Room' is missing, use "TBA".
+         - If 'Time' is missing, use "9:00 AM".
+      4. NORMALIZE CATEGORIES (EXTREMELY IMPORTANT):
+         - For EVENTS: The category property MUST be exactly one of: 'General', 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - If an event is for a specific branch, use that branch name.
+         - If an event is for all students (Sports, Fest, etc.), use 'General'.
+         - Never use categories like 'Workshop' or 'Cultural'; map them to 'General' or the specific 'Branch'.
+      5. OUTPUT: Return ONLY a valid JSON array of objects.
     `;
 
     const response = await ai.models.generateContent({
@@ -110,6 +87,7 @@ export async function extractCategoryData(category: string, content: string, mim
     });
 
     const rawText = response.text || '[]';
+    // Deep clean the string to ensure valid JSON
     const jsonStart = rawText.indexOf('[');
     const jsonEnd = rawText.lastIndexOf(']') + 1;
     const sanitizedJson = jsonStart !== -1 ? rawText.substring(jsonStart, jsonEnd) : '[]';
@@ -117,6 +95,8 @@ export async function extractCategoryData(category: string, content: string, mim
     const extracted = JSON.parse(sanitizedJson);
     
     if (!Array.isArray(extracted)) return [];
+
+    console.log(`[AI Extraction] ${category}: Found ${extracted.length} records.`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -126,6 +106,38 @@ export async function extractCategoryData(category: string, content: string, mim
   } catch (error) {
     console.error(`[AI Extraction Error] ${category}:`, error);
     return [];
+  }
+}
+
+/**
+ * Stylize Map Image
+ */
+export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
+          { text: 'Convert this campus map into a futuristic neon vector illustration. Remove all text labels.' }
+        ]
+      }
+    });
+    
+    const candidates = response.candidates ?? [];
+    for (const candidate of candidates) {
+      const parts = candidate.content?.parts ?? [];
+      for (const part of parts) {
+        if (part.inlineData?.data) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    return null;
+  } catch (e) { 
+    console.error("Map Stylization Error:", e);
+    return null; 
   }
 }
 

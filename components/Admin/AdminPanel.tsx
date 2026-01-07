@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { AppData, Complaint } from '../../types';
-import { extractCategoryData } from '../../services/geminiService';
+import { extractCategoryData, stylizeMapImage } from '../../services/geminiService';
 import { PersistenceService } from '../../services/persistenceService';
 import Logo from '../Logo';
 import * as XLSX from 'xlsx';
@@ -36,6 +36,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
     setIsProcessing(true);
     setStatusMsg('CLOUD PUSH...');
     
+    // updateAppDataAndSync in App.tsx already calls PersistenceService.saveData
+    // We just call the prop to handle the centralized state and persistence update.
     try {
       await setAppData(newData);
       setStatusMsg('SYNCED ✅');
@@ -76,10 +78,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             return;
           }
 
+          setStatusMsg('AI STYLIZING...');
+          const stylizedBase64 = await stylizeMapImage(base64);
+          let stylizedUrl = null;
+          
+          if (stylizedBase64) {
+             stylizedUrl = await PersistenceService.uploadImage(stylizedBase64, `campus_maps/stylized_${Date.now()}`);
+          }
+
           const updated: AppData = { 
             ...appData, 
             campusMapImage: originalUrl, 
-            stylizedMapImage: null // No longer using stylized images
+            stylizedMapImage: stylizedUrl || null 
           };
           await syncGlobalChanges(updated);
           return;
@@ -185,6 +195,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const renderView = (catKey: AdminCategory) => {
     const cat = CATEGORY_MAP[catKey];
     
+    // Custom View for Complaints
     if (catKey === 'COMPLAINTS') {
       return (
         <div className="space-y-6">
@@ -294,18 +305,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         {catKey === 'CAMPUS_MAP' && (
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Map Preview</h4>
-            <div className="px-2">
+            <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Map Previews</h4>
+            <div className="grid grid-cols-2 gap-4 px-2">
               <div className="space-y-2">
-                <span className="text-[8px] font-black text-slate-600 uppercase">Exact Uploaded View</span>
-                <div className="aspect-video bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center shadow-inner relative">
+                <span className="text-[8px] font-black text-slate-600 uppercase">Original Exact</span>
+                <div className="aspect-square bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center">
                   {appData.campusMapImage ? (
-                    <img src={appData.campusMapImage} className="w-full h-full object-contain" />
+                    <img src={appData.campusMapImage} className="w-full h-full object-cover" />
                   ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <i className="fa-solid fa-image text-4xl text-slate-800"></i>
-                      <span className="text-[9px] text-slate-700 font-black uppercase tracking-widest">No Map Active</span>
-                    </div>
+                    <i className="fa-solid fa-image text-slate-800"></i>
+                  )}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <span className="text-[8px] font-black text-slate-600 uppercase">AI Stylized</span>
+                <div className="aspect-square bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                  {appData.stylizedMapImage ? (
+                    <img src={appData.stylizedMapImage} className="w-full h-full object-cover" />
+                  ) : (
+                    <i className="fa-solid fa-wand-magic-sparkles text-slate-800"></i>
                   )}
                 </div>
               </div>
