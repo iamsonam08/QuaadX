@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -11,6 +10,8 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Include all relevant data for the AI to have full context
     const cleanContext = {
       attendance: context.attendance,
       timetable: context.timetable,
@@ -18,30 +19,41 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       scholarships: context.scholarships,
       internships: context.internships,
       events: context.events,
+      campusNotes: context.rawKnowledge, // Added this to help with campus map questions
     };
     
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: question,
       config: {
-        systemInstruction: `You are VPai, the official AI for QuadX College.
+        systemInstruction: `You are VPai, the polite and helpful official AI companion for QuadX College.
         
-        CONTEXT:
+        CONTEXT DATA FROM CAMPUS DATABASE:
         ${JSON.stringify(cleanContext, null, 2)}
         
-        STRICT RULES:
-        1. Only answer using the CONTEXT provided.
-        2. If info is missing, say: "Data not available in my current records."
-        3. Be concise. Use **bold** for important dates/times/rooms.
-        4. When asked about attendance, summarize the percentages.`,
-        temperature: 0.1,
+        STRICT OPERATING PROCEDURES:
+        1. PERSPECTIVE: Always speak politely as "VPai". Use "I" when referring to yourself.
+        2. ACCURACY: Only provide information found in the CONTEXT DATA above. 
+        3. FALLBACK: If the information is not present in the context, say: "I apologize, but I don't have that specific information in my current campus records."
+        4. CONCISENESS: Keep answers short and direct. Avoid long introductions.
+        5. FORMATTING: Use **bold** for dates, times, room numbers, and subject names. Use bullet points for lists.
+        6. ATTENDANCE: When asked about attendance, provide a quick summary of the percentages for the requested subject or overall.
+        7. TIMETABLE: Clearly state the time and room for classes.`,
+        temperature: 0.2,
+        topP: 0.8,
+        topK: 40
       }
     });
 
-    return response.text?.trim() || "I'm having trouble retrieving that information.";
+    if (response && response.text) {
+      return response.text.trim();
+    }
+    
+    return "I'm sorry, I couldn't find an answer to that in our database.";
   } catch (error) {
     console.error("Gemini Assistant Error:", error);
-    return "Campus AI is briefly offline. Please try again.";
+    // Returning a slightly more descriptive error internally but keeping it polite
+    return "I'm currently having a bit of trouble connecting to the campus brain. Could you try asking me again in a moment?";
   }
 }
 
