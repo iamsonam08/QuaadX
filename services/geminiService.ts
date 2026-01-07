@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -10,40 +9,55 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  */
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
-    // Initialize the AI client inside the function
+    // Initialize the AI client
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Prepare a clean, compact context for the AI
-    const campusContext = {
-      attendance: context.attendance || [],
-      timetable: context.timetable || [],
-      exams: context.exams || [],
-      scholarships: context.scholarships || [],
-      internships: context.internships || [],
-      events: context.events || [],
-      campusNotes: context.rawKnowledge || [],
-    };
-    
-    // Using gemini-3-flash-preview for high speed and reliable connectivity
+    // Construct a textual knowledge base from the available documents
+    // This is more resilient than JSON stringification for system instructions
+    const knowledgeParts: string[] = [];
+
+    if (context.rawKnowledge && context.rawKnowledge.length > 0) {
+      knowledgeParts.push("GENERAL CAMPUS NOTES:\n" + context.rawKnowledge.join("\n"));
+    }
+    if (context.attendance && context.attendance.length > 0) {
+      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% (${a.attendedClasses}/${a.totalClasses}) for ${a.branch} ${a.year}`).join("\n"));
+    }
+    if (context.timetable && context.timetable.length > 0) {
+      knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- ${t.day} for ${t.branch} ${t.year} Div ${t.division}: ${t.slots.map(s => `${s.time} ${s.subject} (Room ${s.room})`).join(", ")}`).join("\n"));
+    }
+    if (context.exams && context.exams.length > 0) {
+      knowledgeParts.push("EXAM SCHEDULES:\n" + context.exams.map(e => `- ${e.subject} on ${e.date} at ${e.time} in ${e.venue} (${e.branch} ${e.year})`).join("\n"));
+    }
+    if (context.scholarships && context.scholarships.length > 0) {
+      knowledgeParts.push("SCHOLARSHIP OPPORTUNITIES:\n" + context.scholarships.map(s => `- ${s.name}: ${s.amount}, Deadline: ${s.deadline}, Eligibility: ${s.eligibility}`).join("\n"));
+    }
+    if (context.internships && context.internships.length > 0) {
+      knowledgeParts.push("INTERNSHIP/PLACEMENT LISTINGS:\n" + context.internships.map(i => `- ${i.company} - ${i.role} in ${i.location}, Stipend: ${i.stipend}`).join("\n"));
+    }
+    if (context.events && context.events.length > 0) {
+      knowledgeParts.push("CAMPUS EVENTS:\n" + context.events.map(e => `- ${e.title} on ${e.date} at ${e.venue}: ${e.description}`).join("\n"));
+    }
+
+    const fullKnowledgeBase = knowledgeParts.length > 0 ? knowledgeParts.join("\n\n") : "No specific records available in the database yet.";
+
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: question,
+      contents: [{ parts: [{ text: question }] }],
       config: {
-        systemInstruction: `You are VPai, the polite, professional, and helpful official AI companion for QuadX College.
+        systemInstruction: `You are VPai, the polite and helpful official AI companion for QuadX College.
         
-        YOUR CAMPUS DATABASE (CONTEXT):
-        ${JSON.stringify(campusContext)}
-        
-        YOUR CORE INSTRUCTIONS:
-        1. IDENTITY: Introduce yourself as VPai only if asked. Always be polite and student-centric.
-        2. DATA SOURCE: Use ONLY the provided context above to answer. If information isn't there, politely state: "I don't have that specific detail in our official campus records yet."
-        3. ACCURACY: Provide specific names, times, rooms, and percentages exactly as they appear in the data.
-        4. BREVITY: Keep answers short, accurate, and easy to read. Use bullet points for lists.
-        5. FORMATTING: Use **bold** for subjects, dates, room numbers, and important values.
-        6. ATTENDANCE: When asked about attendance, summarize the percentage and class count for that subject.
-        7. TIMETABLE: Clearly state class timings and locations.`,
+Use the following CAMPUS KNOWLEDGE BASE to answer questions accurately and concisely.
+
+CAMPUS KNOWLEDGE BASE:
+${fullKnowledgeBase}
+
+STRICT GUIDELINES:
+1. ALWAYS be polite and professional.
+2. If the answer is NOT in the knowledge base, politely say: "I apologize, but I don't have that specific information in my records yet."
+3. Keep answers SHORT and accurate.
+4. Use **bold** for key info like times, rooms, subjects, and dates.
+5. Use bullet points for lists.`,
         temperature: 0.1,
-        topP: 0.9,
       }
     });
 
@@ -51,10 +65,10 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       return response.text.trim();
     }
     
-    return "I apologize, I'm finding it difficult to retrieve that information right now. Could you please rephrase your question?";
+    return "I apologize, I'm having trouble formulating a response. Could you try asking in a different way?";
   } catch (error) {
     console.error("VPai Connection Error:", error);
-    return "I'm currently having a bit of trouble connecting to the campus records. Please try asking me again in a moment, and I'll be happy to help!";
+    return "I'm currently having a bit of trouble connecting to my campus records. Please try asking me again in a moment!";
   }
 }
 
@@ -86,7 +100,7 @@ export async function extractCategoryData(category: string, content: string, mim
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
