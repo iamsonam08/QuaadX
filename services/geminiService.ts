@@ -9,39 +9,40 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  */
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
+    // Initialize the AI client inside the function to ensure the most up-to-date API key is used
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Include all relevant data for the AI to have full context
-    const cleanContext = {
-      attendance: context.attendance,
-      timetable: context.timetable,
-      exams: context.exams,
-      scholarships: context.scholarships,
-      internships: context.internships,
-      events: context.events,
-      campusNotes: context.rawKnowledge, // Added this to help with campus map questions
+    // Prepare a clean, compact context for the AI
+    const campusContext = {
+      attendance: context.attendance || [],
+      timetable: context.timetable || [],
+      exams: context.exams || [],
+      scholarships: context.scholarships || [],
+      internships: context.internships || [],
+      events: context.events || [],
+      campusNotes: context.rawKnowledge || [],
     };
     
+    // Use gemini-3-pro-preview for complex reasoning over the campus database
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: question,
+      model: 'gemini-3-pro-preview',
+      contents: [{ parts: [{ text: question }] }],
       config: {
-        systemInstruction: `You are VPai, the polite and helpful official AI companion for QuadX College.
+        systemInstruction: `You are VPai, the polite, professional, and helpful official AI companion for QuadX College.
         
-        CONTEXT DATA FROM CAMPUS DATABASE:
-        ${JSON.stringify(cleanContext, null, 2)}
+        YOUR CAMPUS DATABASE (CONTEXT):
+        ${JSON.stringify(campusContext)}
         
-        STRICT OPERATING PROCEDURES:
-        1. PERSPECTIVE: Always speak politely as "VPai". Use "I" when referring to yourself.
-        2. ACCURACY: Only provide information found in the CONTEXT DATA above. 
-        3. FALLBACK: If the information is not present in the context, say: "I apologize, but I don't have that specific information in my current campus records."
-        4. CONCISENESS: Keep answers short and direct. Avoid long introductions.
-        5. FORMATTING: Use **bold** for dates, times, room numbers, and subject names. Use bullet points for lists.
-        6. ATTENDANCE: When asked about attendance, provide a quick summary of the percentages for the requested subject or overall.
-        7. TIMETABLE: Clearly state the time and room for classes.`,
-        temperature: 0.2,
-        topP: 0.8,
-        topK: 40
+        YOUR CORE INSTRUCTIONS:
+        1. IDENTITY: Introduce yourself as VPai only if asked. Always be polite and student-centric.
+        2. DATA SOURCE: Use ONLY the provided context above to answer. If information isn't there, politely state: "I don't have that specific detail in our official campus records yet."
+        3. ACCURACY: Provide specific names, times, rooms, and percentages exactly as they appear in the data.
+        4. BREVITY: Keep answers short, accurate, and easy to read. Use bullet points for lists.
+        5. FORMATTING: Use **bold** for subjects, dates, room numbers, and important values.
+        6. ATTENDANCE: When asked about attendance, summarize the percentage and class count for that subject.
+        7. TIMETABLE: Clearly state class timings and locations.`,
+        temperature: 0.1, // Lower temperature for higher factual accuracy
+        topP: 0.9,
       }
     });
 
@@ -49,11 +50,10 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       return response.text.trim();
     }
     
-    return "I'm sorry, I couldn't find an answer to that in our database.";
+    return "I apologize, I'm finding it difficult to retrieve that information right now. Could you please rephrase your question?";
   } catch (error) {
-    console.error("Gemini Assistant Error:", error);
-    // Returning a slightly more descriptive error internally but keeping it polite
-    return "I'm currently having a bit of trouble connecting to the campus brain. Could you try asking me again in a moment?";
+    console.error("VPai Connection Error:", error);
+    return "I'm currently having a bit of trouble connecting to the campus records. Please try asking me again in a moment, and I'll be happy to help!";
   }
 }
 
@@ -75,28 +75,17 @@ export async function extractCategoryData(category: string, content: string, mim
       ${content}
       """
 
-      STRICT NORMALIZATION RULES (EXTREMELY IMPORTANT):
+      STRICT NORMALIZATION RULES:
       1. BRANCH: Must be EXACTLY one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
-         - Map 'Computer', 'CSE' to 'Comp'.
-         - Map 'Information Technology' to 'IT'.
-         - Map 'Mechanical' to 'Mech'.
-         - Map 'Electrical' to 'Elect'.
-         - Map 'Artificial Intelligence' to 'AIDS'.
-         - Map 'Electronics', 'ENTC' to 'E&TC'.
       2. YEAR: Must be EXACTLY one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
-         - Map 'FY', 'First Year' to '1st Year'.
-         - Map 'SY', 'Second Year' to '2nd Year'.
-         - Map 'TY', 'Third Year' to '3rd Year'.
-         - Map 'LY', 'BE', 'Final Year' to '4th Year'.
       3. EVENT CATEGORY: Must be one of the Branches above OR 'General'.
-      4. INFER missing fields based on context or headers.
       
       OUTPUT: Return ONLY a valid JSON array of objects matching the schema.
     `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
