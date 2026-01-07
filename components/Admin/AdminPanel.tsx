@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { AppData, Complaint } from '../../types';
-import { extractCategoryData, stylizeMapImage } from '../../services/geminiService';
+import { extractCategoryData } from '../../services/geminiService';
 import { PersistenceService } from '../../services/persistenceService';
 import Logo from '../Logo';
 import * as XLSX from 'xlsx';
@@ -36,17 +36,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
     setIsProcessing(true);
     setStatusMsg('CLOUD PUSH...');
     
-    const success = await PersistenceService.saveData(newData);
-    
-    if (success) {
-      setAppData(newData);
+    try {
+      await setAppData(newData);
       setStatusMsg('SYNCED ✅');
-    } else {
+    } catch (err) {
+      console.error("Sync error:", err);
       setStatusMsg('SYNC FAILED ❌');
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => setStatusMsg(''), 3000);
     }
-    
-    setIsProcessing(false);
-    setTimeout(() => setStatusMsg(''), 3000);
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,7 +68,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
           const base64 = event.target?.result as string;
           setStatusMsg('UPLOADING TO STORAGE...');
           
-          // Fix for large image error: Upload to Firebase Storage instead of Firestore
           const originalUrl = await PersistenceService.uploadImage(base64, `campus_maps/original_${Date.now()}`);
           
           if (!originalUrl) {
@@ -78,18 +76,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
             return;
           }
 
-          setStatusMsg('AI STYLIZING...');
-          const stylizedBase64 = await stylizeMapImage(base64);
-          let stylizedUrl = null;
-          
-          if (stylizedBase64) {
-             stylizedUrl = await PersistenceService.uploadImage(stylizedBase64, `campus_maps/stylized_${Date.now()}`);
-          }
-
           const updated: AppData = { 
             ...appData, 
             campusMapImage: originalUrl, 
-            stylizedMapImage: stylizedUrl || null 
+            stylizedMapImage: null // No longer using stylized images
           };
           await syncGlobalChanges(updated);
           return;
@@ -195,7 +185,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
   const renderView = (catKey: AdminCategory) => {
     const cat = CATEGORY_MAP[catKey];
     
-    // Custom View for Complaints
     if (catKey === 'COMPLAINTS') {
       return (
         <div className="space-y-6">
@@ -225,7 +214,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
                     </div>
                     <span className="text-[8px] font-bold text-slate-600 uppercase">{c.timestamp}</span>
                   </div>
-                  <p className="text-xs text-slate-200 font-bold leading-relaxed bg-slate-950/50 p-5 rounded-3xl border border-slate-800/50">
+                  <p className="text-xs text-slate-200 font-bold leading-relaxed bg-slate-950/50 p-5 rounded-3xl border border-slate-800/50 whitespace-pre-wrap max-h-48 overflow-y-auto no-scrollbar">
                     {c.text}
                   </p>
                   <div className="flex gap-2">
@@ -305,25 +294,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ appData, setAppData, onExit }) 
 
         {catKey === 'CAMPUS_MAP' && (
           <div className="space-y-4">
-            <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Map Previews</h4>
-            <div className="grid grid-cols-2 gap-4 px-2">
+            <h4 className="text-[10px] font-black text-slate-600 uppercase px-6 tracking-widest">Map Preview</h4>
+            <div className="px-2">
               <div className="space-y-2">
-                <span className="text-[8px] font-black text-slate-600 uppercase">Original Exact</span>
-                <div className="aspect-square bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center">
+                <span className="text-[8px] font-black text-slate-600 uppercase">Exact Uploaded View</span>
+                <div className="aspect-video bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center shadow-inner relative">
                   {appData.campusMapImage ? (
-                    <img src={appData.campusMapImage} className="w-full h-full object-cover" />
+                    <img src={appData.campusMapImage} className="w-full h-full object-contain" />
                   ) : (
-                    <i className="fa-solid fa-image text-slate-800"></i>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <span className="text-[8px] font-black text-slate-600 uppercase">AI Stylized</span>
-                <div className="aspect-square bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden flex items-center justify-center">
-                  {appData.stylizedMapImage ? (
-                    <img src={appData.stylizedMapImage} className="w-full h-full object-cover" />
-                  ) : (
-                    <i className="fa-solid fa-wand-magic-sparkles text-slate-800"></i>
+                    <div className="flex flex-col items-center gap-2">
+                      <i className="fa-solid fa-image text-4xl text-slate-800"></i>
+                      <span className="text-[9px] text-slate-700 font-black uppercase tracking-widest">No Map Active</span>
+                    </div>
                   )}
                 </div>
               </div>

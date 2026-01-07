@@ -27,6 +27,10 @@ const sanitizeData = (data: any): any => {
 const GLOBAL_STATE_DOC_ID = "global_app_state";
 const STATE_COLLECTION = "system_config";
 
+// Simple internal lock for saveData to prevent overlapping writes
+let isSaving = false;
+let pendingData: AppData | null = null;
+
 export const PersistenceService = {
   /**
    * Loads data from Firestore once.
@@ -66,18 +70,37 @@ export const PersistenceService = {
   },
 
   /**
-   * Saves data to Firestore.
+   * Saves data to Firestore with write-queue protection.
    */
   async saveData(data: AppData): Promise<boolean> {
+    // If already saving, queue the latest data and return immediately
+    if (isSaving) {
+      pendingData = data;
+      return true;
+    }
+
+    isSaving = true;
     try {
       const docRef = doc(db, STATE_COLLECTION, GLOBAL_STATE_DOC_ID);
       const cleanedData = sanitizeData(data);
       await setDoc(docRef, cleanedData);
+      
+      // If new data arrived while we were saving, process it now
+      if (pendingData) {
+        const nextData = pendingData;
+        pendingData = null;
+        isSaving = false; // Release lock before recursion
+        return await this.saveData(nextData);
+      }
+      
+      isSaving = false;
       return true;
     } catch (e: any) {
       console.error("Persistence: Save Failed", e);
+      isSaving = false;
+      pendingData = null; // Clear queue on hard error
       if (e.message?.includes('longer than 1048487 bytes')) {
-        alert("Persistence Error: The data is too large for the cloud database. Please ensure images are optimized.");
+        alert("Persistence Error: The data is too large. Please ensure images are optimized.");
       }
       return false;
     }

@@ -58,24 +58,28 @@ export async function extractCategoryData(category: string, content: string, mim
       ACT AS A DATA EXTRACTION EXPERT.
       CATEGORY: '${category}'
       
-      INPUT DATA (SPREADSHEET ROWS):
+      INPUT DATA:
       """
       ${content}
       """
 
-      INSTRUCTIONS:
-      1. ANALYZE the input data. It is a series of rows where columns are separated by pipes (|).
-      2. MAP values to the schema.
-      3. INFER missing fields:
-         - If 'Branch' is mentioned in a header but missing in rows, use that branch.
-         - If 'Room' is missing, use "TBA".
-         - If 'Time' is missing, use "9:00 AM".
-      4. NORMALIZE CATEGORIES (EXTREMELY IMPORTANT):
-         - For EVENTS: The category property MUST be exactly one of: 'General', 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
-         - If an event is for a specific branch, use that branch name.
-         - If an event is for all students (Sports, Fest, etc.), use 'General'.
-         - Never use categories like 'Workshop' or 'Cultural'; map them to 'General' or the specific 'Branch'.
-      5. OUTPUT: Return ONLY a valid JSON array of objects.
+      STRICT NORMALIZATION RULES (EXTREMELY IMPORTANT):
+      1. BRANCH: Must be EXACTLY one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
+         - Map 'Computer', 'CSE' to 'Comp'.
+         - Map 'Information Technology' to 'IT'.
+         - Map 'Mechanical' to 'Mech'.
+         - Map 'Electrical' to 'Elect'.
+         - Map 'Artificial Intelligence' to 'AIDS'.
+         - Map 'Electronics', 'ENTC' to 'E&TC'.
+      2. YEAR: Must be EXACTLY one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
+         - Map 'FY', 'First Year' to '1st Year'.
+         - Map 'SY', 'Second Year' to '2nd Year'.
+         - Map 'TY', 'Third Year' to '3rd Year'.
+         - Map 'LY', 'BE', 'Final Year' to '4th Year'.
+      3. EVENT CATEGORY: Must be one of the Branches above OR 'General'.
+      4. INFER missing fields based on context or headers.
+      
+      OUTPUT: Return ONLY a valid JSON array of objects matching the schema.
     `;
 
     const response = await ai.models.generateContent({
@@ -88,7 +92,6 @@ export async function extractCategoryData(category: string, content: string, mim
     });
 
     const rawText = response.text || '[]';
-    // Deep clean the string to ensure valid JSON
     const jsonStart = rawText.indexOf('[');
     const jsonEnd = rawText.lastIndexOf(']') + 1;
     const sanitizedJson = jsonStart !== -1 ? rawText.substring(jsonStart, jsonEnd) : '[]';
@@ -96,8 +99,6 @@ export async function extractCategoryData(category: string, content: string, mim
     const extracted = JSON.parse(sanitizedJson);
     
     if (!Array.isArray(extracted)) return [];
-
-    console.log(`[AI Extraction] ${category}: Found ${extracted.length} records.`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -107,38 +108,6 @@ export async function extractCategoryData(category: string, content: string, mim
   } catch (error) {
     console.error(`[AI Extraction Error] ${category}:`, error);
     return [];
-  }
-}
-
-/**
- * Stylize Map Image
- */
-export async function stylizeMapImage(imageBase64: string): Promise<string | null> {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [
-          { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: 'Convert this campus map into a futuristic neon vector illustration. Remove all text labels.' }
-        ]
-      }
-    });
-    
-    const candidates = response.candidates ?? [];
-    for (const candidate of candidates) {
-      const parts = candidate.content?.parts ?? [];
-      for (const part of parts) {
-        if (part.inlineData?.data) {
-          return `data:image/png;base64,{part.inlineData.data}`;
-        }
-      }
-    }
-    return null;
-  } catch (e) { 
-    console.error("Map Stylization Error:", e);
-    return null; 
   }
 }
 
