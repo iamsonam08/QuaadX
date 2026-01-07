@@ -9,54 +9,56 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
  */
 export async function askVPai(question: string, context: AppData): Promise<string> {
   try {
-    // Initialize the AI client
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     // Construct a textual knowledge base from the available documents
-    // This is more resilient than JSON stringification for system instructions
     const knowledgeParts: string[] = [];
 
     if (context.rawKnowledge && context.rawKnowledge.length > 0) {
-      knowledgeParts.push("GENERAL CAMPUS NOTES:\n" + context.rawKnowledge.join("\n"));
+      knowledgeParts.push("GENERAL CAMPUS INFO:\n" + context.rawKnowledge.join("\n"));
     }
     if (context.attendance && context.attendance.length > 0) {
-      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% (${a.attendedClasses}/${a.totalClasses}) for ${a.branch} ${a.year}`).join("\n"));
+      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% for ${a.branch} ${a.year}`).join("\n"));
     }
     if (context.timetable && context.timetable.length > 0) {
-      knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- ${t.day} for ${t.branch} ${t.year} Div ${t.division}: ${t.slots.map(s => `${s.time} ${s.subject} (Room ${s.room})`).join(", ")}`).join("\n"));
+      knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- ${t.day} (${t.branch} ${t.year} Div ${t.division}): ${t.slots.map(s => `${s.time} ${s.subject}`).join(", ")}`).join("\n"));
     }
     if (context.exams && context.exams.length > 0) {
-      knowledgeParts.push("EXAM SCHEDULES:\n" + context.exams.map(e => `- ${e.subject} on ${e.date} at ${e.time} in ${e.venue} (${e.branch} ${e.year})`).join("\n"));
+      knowledgeParts.push("EXAM SCHEDULES:\n" + context.exams.map(e => `- ${e.subject} on ${e.date} at ${e.time} (${e.branch})`).join("\n"));
     }
     if (context.scholarships && context.scholarships.length > 0) {
-      knowledgeParts.push("SCHOLARSHIP OPPORTUNITIES:\n" + context.scholarships.map(s => `- ${s.name}: ${s.amount}, Deadline: ${s.deadline}, Eligibility: ${s.eligibility}`).join("\n"));
+      knowledgeParts.push("SCHOLARSHIP OPPORTUNITIES:\n" + context.scholarships.map(s => `- ${s.name}: ${s.amount}, Deadline: ${s.deadline}`).join("\n"));
     }
     if (context.internships && context.internships.length > 0) {
-      knowledgeParts.push("INTERNSHIP/PLACEMENT LISTINGS:\n" + context.internships.map(i => `- ${i.company} - ${i.role} in ${i.location}, Stipend: ${i.stipend}`).join("\n"));
+      knowledgeParts.push("INTERNSHIP LISTINGS:\n" + context.internships.map(i => `- ${i.company} (${i.role}), Stipend: ${i.stipend}`).join("\n"));
     }
     if (context.events && context.events.length > 0) {
-      knowledgeParts.push("CAMPUS EVENTS:\n" + context.events.map(e => `- ${e.title} on ${e.date} at ${e.venue}: ${e.description}`).join("\n"));
+      knowledgeParts.push("CAMPUS EVENTS:\n" + context.events.map(e => `- ${e.title} (${e.date}): ${e.description}`).join("\n"));
     }
 
-    const fullKnowledgeBase = knowledgeParts.length > 0 ? knowledgeParts.join("\n\n") : "No specific records available in the database yet.";
+    const fullKnowledgeBase = knowledgeParts.length > 0 
+      ? knowledgeParts.join("\n\n") 
+      : "No specific records available in the database yet.";
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: question }] }],
+      contents: question,
       config: {
         systemInstruction: `You are VPai, the polite and helpful official AI companion for QuadX College.
         
-Use the following CAMPUS KNOWLEDGE BASE to answer questions accurately and concisely.
+Your goal is to answer questions strictly and accurately using the provided CAMPUS KNOWLEDGE BASE.
 
 CAMPUS KNOWLEDGE BASE:
 ${fullKnowledgeBase}
 
-STRICT GUIDELINES:
+STRICT OPERATING RULES:
 1. ALWAYS be polite and professional.
-2. If the answer is NOT in the knowledge base, politely say: "I apologize, but I don't have that specific information in my records yet."
-3. Keep answers SHORT and accurate.
-4. Use **bold** for key info like times, rooms, subjects, and dates.
-5. Use bullet points for lists.`,
+2. Answer strictly based on the provided knowledge base above.
+3. If the information is NOT in the knowledge base, politely say: "I apologize, but I don't have that specific information in my records yet."
+4. KEEP ANSWERS SHORT. Provide a concise but accurate response.
+5. Use **bold** for key details like dates, times, subject names, or amounts.
+6. Use bullet points for any lists.
+7. Always refer to yourself as VPai.`,
         temperature: 0.1,
       }
     });
@@ -65,10 +67,10 @@ STRICT GUIDELINES:
       return response.text.trim();
     }
     
-    return "I apologize, I'm having trouble formulating a response. Could you try asking in a different way?";
+    return "I'm sorry, I couldn't find an answer to that in our campus records.";
   } catch (error) {
     console.error("VPai Connection Error:", error);
-    return "I'm currently having a bit of trouble connecting to my campus records. Please try asking me again in a moment!";
+    return "I'm having a slight problem connecting to my campus database right now. Please try asking me again!";
   }
 }
 
@@ -100,7 +102,7 @@ export async function extractCategoryData(category: string, content: string, mim
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
