@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -6,46 +7,71 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
  * VPai Chat Assistant
+ * Uses Gemini 3 Pro for high-accuracy reasoning over campus records.
  */
 export async function askVPai(question: string, context: AppData): Promise<string> {
+  if (!question.trim()) return "I'm listening! What would you like to know about the campus?";
+
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const cleanContext = {
-      attendance: context.attendance,
-      timetable: context.timetable,
-      exams: context.exams,
-      scholarships: context.scholarships,
-      internships: context.internships,
-      events: context.events,
-    };
+    
+    // Construct a rich textual context for the AI
+    const knowledgeParts: string[] = [];
+
+    if (context.rawKnowledge && context.rawKnowledge.length > 0) {
+      knowledgeParts.push("GENERAL CAMPUS NOTES:\n" + context.rawKnowledge.join("\n"));
+    }
+    if (context.attendance && context.attendance.length > 0) {
+      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% (${a.attendedClasses}/${a.totalClasses}) for ${a.branch} ${a.year}`).join("\n"));
+    }
+    if (context.timetable && context.timetable.length > 0) {
+      knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- Day: ${t.day}, Branch: ${t.branch}, Year: ${t.year}, Div: ${t.division}. Classes: ${t.slots.map(s => `${s.time} - ${s.subject} (Room ${s.room})`).join(", ")}`).join("\n"));
+    }
+    if (context.exams && context.exams.length > 0) {
+      knowledgeParts.push("EXAM SCHEDULES:\n" + context.exams.map(e => `- ${e.subject} on ${e.date} at ${e.time} in ${e.venue} (Target: ${e.branch} ${e.year} Div ${e.division})`).join("\n"));
+    }
+    if (context.scholarships && context.scholarships.length > 0) {
+      knowledgeParts.push("SCHOLARSHIP OPPORTUNITIES:\n" + context.scholarships.map(s => `- ${s.name}: ${s.amount}, Ends: ${s.deadline}, For: ${s.eligibility}`).join("\n"));
+    }
+    if (context.internships && context.internships.length > 0) {
+      knowledgeParts.push("INTERNSHIP/PLACEMENT LISTINGS:\n" + context.internships.map(i => `- ${i.company}: ${i.role} (${i.location}), Stipend: ${i.stipend}`).join("\n"));
+    }
+    if (context.events && context.events.length > 0) {
+      knowledgeParts.push("CAMPUS EVENTS:\n" + context.events.map(e => `- ${e.title} on ${e.date} at ${e.venue}: ${e.description}`).join("\n"));
+    }
+
+    const campusKnowledge = knowledgeParts.length > 0 ? knowledgeParts.join("\n\n") : "No campus data available yet.";
     
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: question,
+      model: 'gemini-3-pro-preview',
+      contents: [{ parts: [{ text: question }] }],
       config: {
-        systemInstruction: `You are VPai, the official AI for QuadX College.
+        systemInstruction: `You are VPai, the polite, professional, and helpful official AI companion for QuadX College.
         
-        CONTEXT:
-        ${JSON.stringify(cleanContext, null, 2)}
+        CAMPUS KNOWLEDGE BASE:
+        ${campusKnowledge}
         
-        STRICT RULES:
-        1. Only answer using the CONTEXT provided.
-        2. If info is missing, say: "Data not available in my current records."
-        3. Be concise. Use **bold** for important dates/times/rooms.
-        4. When asked about attendance, summarize the percentages.`,
-        temperature: 0.1,
+        YOUR CORE INSTRUCTIONS:
+        1. IDENTITY: You are VPai. Always be student-centric and encouraging.
+        2. DATA SOURCE: Use ONLY the CAMPUS KNOWLEDGE BASE provided above.
+        3. ACCURACY: If the information is missing from the knowledge base, say: "I apologize, but I don't have that specific information in the official campus records yet."
+        4. BREVITY: Keep answers short, accurate, and structured. Use bullet points for schedules or lists.
+        5. FORMATTING: Use **bold** for subjects, times, room numbers, dates, and names.
+        6. RELEVANCE: Only answer questions related to college life, academics, and the provided data.`,
+        temperature: 0.2,
       }
     });
 
-    return response.text?.trim() || "I'm having trouble retrieving that information.";
+    return response.text?.trim() || "I'm sorry, I'm having trouble processing that request right now.";
   } catch (error) {
-    console.error("Gemini Assistant Error:", error);
-    return "Campus AI is briefly offline. Please try again.";
+    console.error("VPai Connection Error:", error);
+    return "I'm currently having trouble connecting to the campus neural network. Please try asking again in a moment!";
   }
 }
 
 /**
  * AI Data Extraction with Normalization
+ * Improved prompt and logic to ensure data is correctly identified and published.
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain"): Promise<any[]> {
   try {
@@ -54,32 +80,29 @@ export async function extractCategoryData(category: string, content: string, mim
     if (!schema) return [];
 
     const prompt = `
-      ACT AS A DATA EXTRACTION EXPERT.
+      ACT AS A DATA EXTRACTION SPECIALIST FOR A COLLEGE DATABASE.
       CATEGORY: '${category}'
       
-      INPUT DATA (SPREADSHEET ROWS):
+      INPUT CONTENT:
       """
       ${content}
       """
 
       INSTRUCTIONS:
-      1. ANALYZE the input data. It is a series of rows where columns are separated by pipes (|).
-      2. MAP values to the schema.
-      3. INFER missing fields:
-         - If 'Branch' is mentioned in a header but missing in rows, use that branch.
-         - If 'Room' is missing, use "TBA".
-         - If 'Time' is missing, use "9:00 AM".
-      4. NORMALIZE CATEGORIES (EXTREMELY IMPORTANT):
-         - For EVENTS: The category property MUST be exactly one of: 'General', 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
-         - If an event is for a specific branch, use that branch name.
-         - If an event is for all students (Sports, Fest, etc.), use 'General'.
-         - Never use categories like 'Workshop' or 'Cultural'; map them to 'General' or the specific 'Branch'.
-      5. OUTPUT: Return ONLY a valid JSON array of objects.
+      1. Carefully parse the input. It may be structured as 'Header: Value | Header: Value' or raw text.
+      2. MAP values to the required JSON schema.
+      3. CRITICAL NORMALIZATION:
+         - Branch: Must be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - Year: Must be exactly one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
+         - Division: Must be 'A' or 'B'.
+         - For Event Category: Must be one of the Branch names OR 'General'.
+      4. DEFAULTS: If a field is missing, use reasonable defaults (e.g., Room: 'TBA', Time: 'TBA', Date: 'TBA').
+      5. OUTPUT: Return ONLY a JSON array of objects. Ensure EVERY item in the array strictly follows the schema.
     `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
@@ -87,16 +110,14 @@ export async function extractCategoryData(category: string, content: string, mim
     });
 
     const rawText = response.text || '[]';
-    // Deep clean the string to ensure valid JSON
+    // Robust extraction of JSON array from potential AI chatter
     const jsonStart = rawText.indexOf('[');
     const jsonEnd = rawText.lastIndexOf(']') + 1;
-    const sanitizedJson = jsonStart !== -1 ? rawText.substring(jsonStart, jsonEnd) : '[]';
+    const sanitizedJson = (jsonStart !== -1 && jsonEnd > jsonStart) ? rawText.substring(jsonStart, jsonEnd) : '[]';
     
     const extracted = JSON.parse(sanitizedJson);
     
     if (!Array.isArray(extracted)) return [];
-
-    console.log(`[AI Extraction] ${category}: Found ${extracted.length} records.`);
 
     return extracted.map((item: any) => ({
       ...item,
@@ -120,7 +141,7 @@ export async function stylizeMapImage(imageBase64: string): Promise<string | nul
       contents: {
         parts: [
           { inlineData: { data: imageBase64.split(',')[1], mimeType: 'image/png' } },
-          { text: 'Convert this campus map into a futuristic neon vector illustration. Remove all text labels.' }
+          { text: 'Redraw this campus map as a vibrant, colorful, futuristic high-tech vector illustration. Remove all textual labels and make it look amazing.' }
         ]
       }
     });
