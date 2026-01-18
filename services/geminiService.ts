@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { AppData } from "../types";
 
@@ -71,13 +70,16 @@ export async function askVPai(question: string, context: AppData): Promise<strin
 
 /**
  * AI Data Extraction with Normalization
- * Improved prompt and logic to ensure data is correctly identified and published.
+ * Improved to use Gemini 3 Pro for complex parsing and added missing schemas.
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain"): Promise<any[]> {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = CATEGORY_SCHEMAS[category];
-    if (!schema) return [];
+    if (!schema) {
+      console.warn(`No schema found for category: ${category}`);
+      return [];
+    }
 
     const prompt = `
       ACT AS A DATA EXTRACTION SPECIALIST FOR A COLLEGE DATABASE.
@@ -89,23 +91,24 @@ export async function extractCategoryData(category: string, content: string, mim
       """
 
       INSTRUCTIONS:
-      1. Carefully parse the input. It may be structured as 'Header: Value | Header: Value' or raw text.
-      2. MAP values to the required JSON schema.
-      3. CRITICAL NORMALIZATION:
+      1. Carefully parse the input. It may be structured as 'Header: Value | Header: Value', CSV, or raw text.
+      2. MAP values to the required JSON schema. 
+      3. CRITICAL NORMALIZATION (Fix values if they are close but not exact):
          - Branch: Must be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
          - Year: Must be exactly one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
          - Division: Must be 'A' or 'B'.
          - For Event Category: Must be one of the Branch names OR 'General'.
       4. DEFAULTS: If a field is missing, use reasonable defaults (e.g., Room: 'TBA', Time: 'TBA', Date: 'TBA').
-      5. OUTPUT: Return ONLY a JSON array of objects. Ensure EVERY item in the array strictly follows the schema.
+      5. OUTPUT: Return ONLY a valid JSON array of objects.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-3-pro-preview', // Upgraded to Pro for better extraction logic
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
+        temperature: 0.1, // Lower temperature for more consistent extraction
       },
     });
 
@@ -264,6 +267,16 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
         year: { type: Type.STRING }
       },
       required: ["subject", "percentage", "totalClasses", "attendedClasses", "branch", "year"]
+    }
+  },
+  'CAMPUS_MAP': {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        info: { type: Type.STRING, description: "Textual description or fact about the campus layout/facilities." }
+      },
+      required: ["info"]
     }
   }
 };
