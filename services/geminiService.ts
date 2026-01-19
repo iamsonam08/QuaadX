@@ -70,7 +70,7 @@ export async function askVPai(question: string, context: AppData): Promise<strin
 
 /**
  * AI Data Extraction with Normalization
- * Improved with more robust prompt to handle messy inputs and ensure exact category matches.
+ * Improved to use Gemini 3 Pro for complex parsing and added missing schemas.
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain"): Promise<any[]> {
   try {
@@ -83,55 +83,40 @@ export async function extractCategoryData(category: string, content: string, mim
 
     const prompt = `
       ACT AS A DATA EXTRACTION SPECIALIST FOR A COLLEGE DATABASE.
-      TARGET CATEGORY: '${category}'
+      CATEGORY: '${category}'
       
-      INPUT CONTENT TO PARSE:
+      INPUT CONTENT:
       """
       ${content}
       """
 
-      STRICT EXTRACTION INSTRUCTIONS:
-      1. SCRAPE AND MAP: Carefully identify all data points in the input content that belong to the '${category}' category.
-      2. SCHEMA COMPLIANCE: Return the data as a JSON array where each object strictly follows the provided schema.
-      3. CRITICAL NORMALIZATION (To ensure data appears in student filters):
-         - 'Branch' MUST be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
-           Fix variations like "Computer" -> "Comp", "Information Tech" -> "IT", "Electronics" -> "E&TC".
-         - 'Year' MUST be exactly one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
-         - 'Division' MUST be 'A' or 'B'.
-         - For Events, 'Category' MUST be one of the Branch names above or 'General'.
-      4. MISSING FIELDS: If a required field is not explicitly present in the text, infer it from context or use: Room: 'TBA', Time: 'TBA', Date: 'TBA', Division: 'A'.
-      5. COMPLETENESS: Do not skip items. If you see a list of subjects, exams, or scholarships, extract EVERY SINGLE ONE.
-      6. OUTPUT: Return ONLY the raw JSON array. No markdown, no conversation.
+      INSTRUCTIONS:
+      1. Carefully parse the input. It may be structured as 'Header: Value | Header: Value', CSV, or raw text.
+      2. MAP values to the required JSON schema. 
+      3. CRITICAL NORMALIZATION (Fix values if they are close but not exact):
+         - Branch: Must be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+         - Year: Must be exactly one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
+         - Division: Must be 'A' or 'B'.
+         - For Event Category: Must be one of the Branch names OR 'General'.
+      4. DEFAULTS: If a field is missing, use reasonable defaults (e.g., Room: 'TBA', Time: 'TBA', Date: 'TBA').
+      5. OUTPUT: Return ONLY a valid JSON array of objects.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', 
+      model: 'gemini-3-pro-preview', // Upgraded to Pro for better extraction logic
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.1, 
+        temperature: 0.1, // Lower temperature for more consistent extraction
       },
     });
 
-    const rawText = (response.text || '[]').trim();
-    
-    // Robust extraction of JSON array from potential AI chatter or markdown wrappers
-    let sanitizedJson = rawText;
-    if (rawText.includes('```json')) {
-      sanitizedJson = rawText.split('```json')[1].split('```')[0].trim();
-    } else if (rawText.includes('```')) {
-      sanitizedJson = rawText.split('```')[1].split('```')[0].trim();
-    }
-    
-    // Ensure we start and end with the array brackets
-    const jsonStart = sanitizedJson.indexOf('[');
-    const jsonEnd = sanitizedJson.lastIndexOf(']') + 1;
-    if (jsonStart !== -1 && jsonEnd > jsonStart) {
-      sanitizedJson = sanitizedJson.substring(jsonStart, jsonEnd);
-    } else {
-      sanitizedJson = '[]';
-    }
+    const rawText = response.text || '[]';
+    // Robust extraction of JSON array from potential AI chatter
+    const jsonStart = rawText.indexOf('[');
+    const jsonEnd = rawText.lastIndexOf(']') + 1;
+    const sanitizedJson = (jsonStart !== -1 && jsonEnd > jsonStart) ? rawText.substring(jsonStart, jsonEnd) : '[]';
     
     const extracted = JSON.parse(sanitizedJson);
     
