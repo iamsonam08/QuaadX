@@ -21,7 +21,7 @@ export async function askVPai(question: string, context: AppData): Promise<strin
       knowledgeParts.push("GENERAL CAMPUS NOTES:\n" + context.rawKnowledge.join("\n"));
     }
     if (context.attendance && context.attendance.length > 0) {
-      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- ${a.subject}: ${a.percentage}% (${a.attendedClasses}/${a.totalClasses}) for ${a.branch} ${a.year}`).join("\n"));
+      knowledgeParts.push("ATTENDANCE RECORDS:\n" + context.attendance.map(a => `- Student ${a.studentId}, Subject: ${a.subject}, Theory: ${a.theoryAttended}/${a.theoryTotal}, Lab: ${a.labAttended}/${a.labTotal}`).join("\n"));
     }
     if (context.timetable && context.timetable.length > 0) {
       knowledgeParts.push("TIMETABLE SCHEDULES:\n" + context.timetable.map(t => `- Day: ${t.day}, Branch: ${t.branch}, Year: ${t.year}, Div: ${t.division}. Classes: ${t.slots.map(s => `${s.time} - ${s.subject} (Room ${s.room})`).join(", ")}`).join("\n"));
@@ -70,7 +70,7 @@ export async function askVPai(question: string, context: AppData): Promise<strin
 
 /**
  * AI Data Extraction with Normalization
- * Improved to use Gemini 3 Pro for complex parsing and added missing schemas.
+ * Improved with more robust prompt to handle messy inputs and ensure exact category matches.
  */
 export async function extractCategoryData(category: string, content: string, mimeType: string = "text/plain"): Promise<any[]> {
   try {
@@ -83,40 +83,52 @@ export async function extractCategoryData(category: string, content: string, mim
 
     const prompt = `
       ACT AS A DATA EXTRACTION SPECIALIST FOR A COLLEGE DATABASE.
-      CATEGORY: '${category}'
+      TARGET CATEGORY: '${category}'
       
-      INPUT CONTENT:
+      INPUT CONTENT TO PARSE:
       """
       ${content}
       """
 
-      INSTRUCTIONS:
-      1. Carefully parse the input. It may be structured as 'Header: Value | Header: Value', CSV, or raw text.
-      2. MAP values to the required JSON schema. 
-      3. CRITICAL NORMALIZATION (Fix values if they are close but not exact):
-         - Branch: Must be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'.
+      STRICT EXTRACTION INSTRUCTIONS:
+      1. SCRAPE AND MAP: Carefully identify all data points in the input content that belong to the '${category}' category.
+      2. SCHEMA COMPLIANCE: Return the data as a JSON array where each object strictly follows the provided schema.
+      3. CRITICAL NORMALIZATION:
+         - For Attendance: 'studentId' is student_id, 'password' is password, 'subject' is subject_name, 'theoryAttended' is theory_attended, 'theoryTotal' is theory_total, 'labAttended' is lab_attended, 'labTotal' is lab_total.
+         - Branch: Must be exactly one of: 'Comp', 'IT', 'Civil', 'Mech', 'Elect', 'AIDS', 'E&TC'. 
          - Year: Must be exactly one of: '1st Year', '2nd Year', '3rd Year', '4th Year'.
          - Division: Must be 'A' or 'B'.
-         - For Event Category: Must be one of the Branch names OR 'General'.
-      4. DEFAULTS: If a field is missing, use reasonable defaults (e.g., Room: 'TBA', Time: 'TBA', Date: 'TBA').
-      5. OUTPUT: Return ONLY a valid JSON array of objects.
+      4. MISSING FIELDS: Use: Room: 'TBA', Time: 'TBA', Date: 'TBA', Division: 'A'.
+      5. COMPLETENESS: Extract EVERY SINGLE ROW found in the text/excel data.
+      6. OUTPUT: Return ONLY the raw JSON array. No markdown.
     `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Upgraded to Pro for better extraction logic
+      model: 'gemini-3-pro-preview', 
       contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseMimeType: "application/json",
         responseSchema: schema,
-        temperature: 0.1, // Lower temperature for more consistent extraction
+        temperature: 0.1, 
       },
     });
 
-    const rawText = response.text || '[]';
-    // Robust extraction of JSON array from potential AI chatter
-    const jsonStart = rawText.indexOf('[');
-    const jsonEnd = rawText.lastIndexOf(']') + 1;
-    const sanitizedJson = (jsonStart !== -1 && jsonEnd > jsonStart) ? rawText.substring(jsonStart, jsonEnd) : '[]';
+    const rawText = (response.text || '[]').trim();
+    
+    let sanitizedJson = rawText;
+    if (rawText.includes('```json')) {
+      sanitizedJson = rawText.split('```json')[1].split('```')[0].trim();
+    } else if (rawText.includes('```')) {
+      sanitizedJson = rawText.split('```')[1].split('```')[0].trim();
+    }
+    
+    const jsonStart = sanitizedJson.indexOf('[');
+    const jsonEnd = sanitizedJson.lastIndexOf(']') + 1;
+    if (jsonStart !== -1 && jsonEnd > jsonStart) {
+      sanitizedJson = sanitizedJson.substring(jsonStart, jsonEnd);
+    } else {
+      sanitizedJson = '[]';
+    }
     
     const extracted = JSON.parse(sanitizedJson);
     
@@ -259,14 +271,17 @@ const CATEGORY_SCHEMAS: Record<string, any> = {
     items: {
       type: Type.OBJECT,
       properties: {
+        studentId: { type: Type.STRING },
+        password: { type: Type.STRING },
         subject: { type: Type.STRING },
-        percentage: { type: Type.NUMBER },
-        totalClasses: { type: Type.NUMBER },
-        attendedClasses: { type: Type.NUMBER },
+        theoryAttended: { type: Type.NUMBER },
+        theoryTotal: { type: Type.NUMBER },
+        labAttended: { type: Type.NUMBER },
+        labTotal: { type: Type.NUMBER },
         branch: { type: Type.STRING },
         year: { type: Type.STRING }
       },
-      required: ["subject", "percentage", "totalClasses", "attendedClasses", "branch", "year"]
+      required: ["studentId", "password", "subject", "theoryAttended", "theoryTotal", "labAttended", "labTotal"]
     }
   },
   'CAMPUS_MAP': {

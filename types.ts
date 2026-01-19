@@ -12,12 +12,15 @@ export type ModuleType =
 
 export interface AttendanceRecord {
   id: string;
+  studentId: string;
+  password?: string;
   subject: string;
-  percentage: number;
-  totalClasses: number;
-  attendedClasses: number;
-  branch: string;
-  year: string;
+  theoryAttended: number;
+  theoryTotal: number;
+  labAttended: number;
+  labTotal: number;
+  branch?: string;
+  year?: string;
 }
 
 export interface TimetableEntry {
